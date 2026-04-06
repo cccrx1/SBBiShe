@@ -7,7 +7,7 @@
 - 攻击：`BadNets`、`Blended`、`WaNet`、`Refool`
 - 防御：`REFINE`
 - 模型：`ResNet18`、`UNetLittle`
-- 数据集：`GTSRB`，通过 `torchvision.datasets.DatasetFolder` 加载
+- 数据集：`GTSRB`
 
 ## 数据目录
 
@@ -17,25 +17,43 @@
 datasets/
 |-- GTSRB/
 |   |-- train/
+|   |   `-- 00000/ ... 00042/
 |   `-- testset/
+|       |-- GT-final_test.csv
+|       |-- 00000.ppm ...
+|       `-- 00000/ ... 00042/   # 运行准备脚本后生成
 `-- refool_reflections/
 ```
 
-- `datasets/GTSRB/train` 和 `datasets/GTSRB/testset` 为交通标志数据集。
-- `datasets/refool_reflections` 只供 `Refool` 使用，放反射图像。
+说明：
+
+- `train/` 使用官方按类别分目录的结构。
+- `testset/` 原始下载通常是扁平目录，仓库脚本无法直接把它当作 `DatasetFolder` 使用。
+- 你需要先运行一次准备脚本，把 `testset/` 中的图片按 `GT-final_test.csv` 复制到类别子目录中。
+
+## 先准备 GTSRB testset
+
+在仓库根目录运行：
+
+```bash
+python scripts/prepare_gtsrb_testset.py --data-root datasets
+```
+
+完成后，`datasets/GTSRB/testset/` 下会多出 `00000` 到 `00042` 这些类别目录。
 
 ## 环境依赖
 
-推荐 Python 3.8，核心依赖见 `requirements.txt`。
+推荐 Python 3.10。
 
 ```bash
 pip install -r requirements.txt
 ```
 
-## 脚本入口
+## 论文脚本入口
 
 所有论文入口都在 `scripts/`：
 
+- `prepare_gtsrb_testset.py`
 - `train_gtsrb_benign.py`
 - `train_gtsrb_badnets.py`
 - `train_gtsrb_blended.py`
@@ -46,42 +64,17 @@ pip install -r requirements.txt
 
 ## 推荐实验顺序
 
-1. 训练 benign 基线
+1. 准备 testset
+2. 跑 benign
+3. 跑攻击
+4. 跑 REFINE 训练
+5. 跑 REFINE 评估
 
-```bash
-python scripts/train_gtsrb_benign.py --data-root datasets --gpu-id 0
-```
-
-2. 训练 4 种攻击
-
-```bash
-python scripts/train_gtsrb_badnets.py --data-root datasets --gpu-id 0
-python scripts/train_gtsrb_blended.py --data-root datasets --gpu-id 0
-python scripts/train_gtsrb_wanet.py --data-root datasets --gpu-id 0
-python scripts/train_gtsrb_refool.py --data-root datasets --reflection-dir datasets/refool_reflections --gpu-id 0
-```
-
-3. 为每种攻击训练 REFINE
-
-```bash
-python scripts/train_refine_gtsrb.py --attack badnets --data-root datasets --gpu-id 0
-python scripts/train_refine_gtsrb.py --attack blended --data-root datasets --gpu-id 0
-python scripts/train_refine_gtsrb.py --attack wanet --data-root datasets --gpu-id 0
-python scripts/train_refine_gtsrb.py --attack refool --data-root datasets --reflection-dir datasets/refool_reflections --gpu-id 0
-```
-
-4. 评估 REFINE
-
-```bash
-python scripts/eval_refine_gtsrb.py --attack badnets --data-root datasets --gpu-id 0
-python scripts/eval_refine_gtsrb.py --attack blended --data-root datasets --gpu-id 0
-python scripts/eval_refine_gtsrb.py --attack wanet --data-root datasets --gpu-id 0
-python scripts/eval_refine_gtsrb.py --attack refool --data-root datasets --reflection-dir datasets/refool_reflections --gpu-id 0
-```
+更具体的本地 smoke test 命令见 [`SMOKE_TEST.md`](/c:/Users/17672/Documents/Projects/SBBiShe/SMOKE_TEST.md)。
 
 ## 本地与服务器分工建议
 
-- 本地 3060 6G：改代码、检查数据路径、做小批量 smoke test、确认脚本可启动。
+- 本地 3060 6G：改代码、检查数据路径、做 1 epoch smoke test、确认脚本可启动。
 - 服务器 32G：完整训练 4 种攻击、训练 REFINE、产出最终日志与 checkpoint。
 
 ## 结果目录约定

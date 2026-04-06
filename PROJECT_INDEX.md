@@ -16,12 +16,22 @@
 |-- scripts/           # 论文专用训练与评估入口
 |-- README.md          # 使用说明
 |-- EXPERIMENTS.md     # 结果产物说明
+|-- SMOKE_TEST.md      # 本地 1 epoch 验证命令
 |-- requirements.txt   # 最小依赖
 `-- PROJECT_INDEX.md   # AI 导向索引
 ```
 
+## 数据相关事实
+
+- 当前仓库按 `DatasetFolder` 读取 GTSRB。
+- `train/` 必须是按类别分目录结构。
+- 官方原始 `testset/` 通常是扁平目录，不能直接给 `DatasetFolder`。
+- 现在仓库提供了 [`scripts/prepare_gtsrb_testset.py`](/c:/Users/17672/Documents/Projects/SBBiShe/scripts/prepare_gtsrb_testset.py)，可根据 `GT-final_test.csv` 在 `testset/` 下生成按类别分目录的副本。
+- 图片扩展名现在支持：`.ppm`、`.png`、`.jpg`、`.jpeg`、`.bmp`。
+
 ## 推荐入口
 
+- 整理 GTSRB testset：[`scripts/prepare_gtsrb_testset.py`](/c:/Users/17672/Documents/Projects/SBBiShe/scripts/prepare_gtsrb_testset.py)
 - 训练 benign：[`scripts/train_gtsrb_benign.py`](/c:/Users/17672/Documents/Projects/SBBiShe/scripts/train_gtsrb_benign.py)
 - 训练 4 个攻击：
   - [`scripts/train_gtsrb_badnets.py`](/c:/Users/17672/Documents/Projects/SBBiShe/scripts/train_gtsrb_badnets.py)
@@ -43,22 +53,24 @@
   - `test()`
   - `preprocess()`
 
-## 数据与结果约定
+## 参数覆盖能力
 
-- 数据目录：
-  - `datasets/GTSRB/train`
-  - `datasets/GTSRB/testset`
-  - `datasets/refool_reflections`
-- 结果目录：
-  - `experiments/benign`
-  - `experiments/attacks/<Attack>`
-  - `experiments/refine/<Attack>/train`
-  - `experiments/refine/<Attack>/eval`
+- 训练脚本支持命令行覆盖默认超参。
+- 常用参数包括：
+  - `--epochs`
+  - `--lr`
+  - `--schedule`
+  - `--disable-schedule`
+  - `--batch-size`
+  - `--num-workers`
+  - `--y-target`
+  - `--poisoned-rate`
+- 具体以各脚本 `--help` 为准。
 
 ## AI 使用建议
 
 - 先读 [`scripts/_common.py`](/c:/Users/17672/Documents/Projects/SBBiShe/scripts/_common.py)
-  - 这里集中定义了数据加载、攻击配置、路径规则和 checkpoint 查找逻辑。
-- 再读 [`core/attacks/base.py`](/c:/Users/17672/Documents/Projects/SBBiShe/core/attacks/base.py)
-  - 理解攻击统一训练流程。
+  - 这里集中定义了数据加载、攻击配置、路径规则、GTSRB 准备逻辑和 checkpoint 查找逻辑。
+- 再读 [`SMOKE_TEST.md`](/c:/Users/17672/Documents/Projects/SBBiShe/SMOKE_TEST.md)
+  - 这里记录了最短验证路径和命令。
 - 若看 REFINE 主线，优先读 [`scripts/train_refine_gtsrb.py`](/c:/Users/17672/Documents/Projects/SBBiShe/scripts/train_refine_gtsrb.py) 和 [`scripts/eval_refine_gtsrb.py`](/c:/Users/17672/Documents/Projects/SBBiShe/scripts/eval_refine_gtsrb.py)。

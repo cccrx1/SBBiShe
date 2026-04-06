@@ -1,4 +1,6 @@
 import argparse
+import csv
+import shutil
 import os
 import sys
 from pathlib import Path
@@ -24,6 +26,7 @@ GLOBAL_SEED = 666
 DEFAULT_DATA_ROOT = REPO_ROOT / "datasets"
 DEFAULT_EXPERIMENT_ROOT = REPO_ROOT / "experiments"
 DEFAULT_REFLECTION_DIR = DEFAULT_DATA_ROOT / "refool_reflections"
+IMAGE_EXTENSIONS = ("png", "ppm", "jpg", "jpeg", "bmp")
 
 ATTACK_NAMES = ("badnets", "blended", "wanet", "refool")
 ATTACK_CANONICAL = {
@@ -139,11 +142,21 @@ def load_gtsrb_datasets(data_root, attack_name=None):
         raise FileNotFoundError(f"GTSRB train directory not found: {train_root}")
     if not test_root.exists():
         raise FileNotFoundError(f"GTSRB test directory not found: {test_root}")
+    if not any(train_root.iterdir()):
+        raise FileNotFoundError(f"GTSRB train directory is empty: {train_root}")
+
+    test_has_class_dirs = any(path.is_dir() for path in test_root.iterdir())
+    test_csv = test_root / "GT-final_test.csv"
+    if not test_has_class_dirs and test_csv.exists():
+        raise FileNotFoundError(
+            "GTSRB testset is still in raw flat layout. "
+            f"Run `python scripts/prepare_gtsrb_testset.py --data-root {data_root}` first."
+        )
 
     trainset = DatasetFolder(
         root=str(train_root),
         loader=load_image_bgr,
-        extensions=("png",),
+        extensions=IMAGE_EXTENSIONS,
         transform=make_gtsrb_transforms(attack_name, train=True),
         target_transform=None,
         is_valid_file=None,
@@ -151,12 +164,49 @@ def load_gtsrb_datasets(data_root, attack_name=None):
     testset = DatasetFolder(
         root=str(test_root),
         loader=load_image_bgr,
-        extensions=("png",),
+        extensions=IMAGE_EXTENSIONS,
         transform=make_gtsrb_transforms(attack_name, train=False),
         target_transform=None,
         is_valid_file=None,
     )
     return trainset, testset
+
+
+def prepare_gtsrb_testset(data_root, copy_mode="copy"):
+    data_root = to_path(data_root)
+    test_root = data_root / "GTSRB" / "testset"
+    csv_path = test_root / "GT-final_test.csv"
+    if not test_root.exists():
+        raise FileNotFoundError(f"GTSRB test directory not found: {test_root}")
+    if not csv_path.exists():
+        raise FileNotFoundError(f"GTSRB test CSV not found: {csv_path}")
+
+    with csv_path.open("r", encoding="utf-8") as f:
+        reader = csv.DictReader(f, delimiter=";")
+        rows = list(reader)
+
+    if not rows:
+        raise RuntimeError(f"No rows found in {csv_path}")
+
+    prepared = 0
+    for row in rows:
+        filename = row["Filename"]
+        class_id = int(row["ClassId"])
+        src = test_root / filename
+        class_dir = test_root / f"{class_id:05d}"
+        dst = class_dir / filename
+        if not src.exists():
+            raise FileNotFoundError(f"Expected GTSRB test image not found: {src}")
+        class_dir.mkdir(parents=True, exist_ok=True)
+        if dst.exists():
+            continue
+        if copy_mode == "copy":
+            shutil.copy2(src, dst)
+        else:
+            raise ValueError(f"Unsupported copy mode: {copy_mode}")
+        prepared += 1
+
+    return prepared
 
 
 def build_badnets_pattern(trigger_size=3, alpha=1.0):
