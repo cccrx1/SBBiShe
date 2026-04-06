@@ -62,6 +62,45 @@ def parse_basic_args(description):
     return parser
 
 
+def add_attack_training_args(parser):
+    parser.add_argument("--epochs", type=int, default=None)
+    parser.add_argument("--lr", type=float, default=None)
+    parser.add_argument("--gamma", type=float, default=None)
+    parser.add_argument("--schedule", action="append", type=int, default=None, help="Repeatable LR milestone, e.g. --schedule 20 --schedule 40")
+    parser.add_argument("--disable-schedule", action="store_true", help="Disable LR milestone schedule and use an empty list.")
+    parser.add_argument("--momentum", type=float, default=None)
+    parser.add_argument("--weight-decay", type=float, default=None)
+    return parser
+
+
+def add_refine_training_args(parser):
+    parser.add_argument("--epochs", type=int, default=None)
+    parser.add_argument("--lr", type=float, default=None)
+    parser.add_argument("--gamma", type=float, default=None)
+    parser.add_argument("--schedule", action="append", type=int, default=None, help="Repeatable LR milestone, e.g. --schedule 20 --schedule 40")
+    parser.add_argument("--disable-schedule", action="store_true", help="Disable LR milestone schedule and use an empty list.")
+    parser.add_argument("--weight-decay", type=float, default=None)
+    parser.add_argument("--betas", nargs=2, type=float, default=None, metavar=("BETA1", "BETA2"))
+    parser.add_argument("--eps", type=float, default=None)
+    parser.add_argument("--amsgrad", action="store_true")
+    return parser
+
+
+def add_common_attack_args(parser, include_reflection=False):
+    parser.add_argument("--y-target", type=int, default=None)
+    parser.add_argument("--poisoned-rate", type=float, default=None)
+    parser.add_argument("--trigger-size", type=int, default=None)
+    parser.add_argument("--blended-alpha", type=float, default=None)
+    parser.add_argument("--wanet-grid-k", type=int, default=None)
+    parser.add_argument("--wanet-noise", dest="wanet_noise", action="store_true")
+    parser.add_argument("--no-wanet-noise", dest="wanet_noise", action="store_false")
+    parser.set_defaults(wanet_noise=None)
+    if include_reflection:
+        parser.add_argument("--reflection-dir", default=str(DEFAULT_REFLECTION_DIR))
+        parser.add_argument("--reflection-limit", type=int, default=None)
+    return parser
+
+
 def build_resnet18():
     return core.models.ResNet(18, NUM_CLASSES)
 
@@ -120,11 +159,11 @@ def load_gtsrb_datasets(data_root, attack_name=None):
     return trainset, testset
 
 
-def build_badnets_pattern(alpha=1.0):
+def build_badnets_pattern(trigger_size=3, alpha=1.0):
     pattern = torch.zeros((IMAGE_SIZE, IMAGE_SIZE), dtype=torch.uint8)
-    pattern[-3:, -3:] = 255
+    pattern[-trigger_size:, -trigger_size:] = 255
     weight = torch.zeros((IMAGE_SIZE, IMAGE_SIZE), dtype=torch.float32)
-    weight[-3:, -3:] = alpha
+    weight[-trigger_size:, -trigger_size:] = alpha
     return pattern, weight
 
 
@@ -139,18 +178,18 @@ def gen_wanet_grid(height=IMAGE_SIZE, k=4):
     return identity_grid, noise_grid
 
 
-def get_wanet_grid_paths(experiment_root):
+def get_wanet_grid_paths(experiment_root, k=4):
     base = to_path(experiment_root) / "attacks" / "WaNet" / "grids"
-    return base / "gtsrb_identity_grid.pth", base / "gtsrb_noise_grid.pth"
+    return base / f"gtsrb_identity_grid_k{k}.pth", base / f"gtsrb_noise_grid_k{k}.pth"
 
 
-def ensure_wanet_grids(experiment_root):
-    identity_path, noise_path = get_wanet_grid_paths(experiment_root)
+def ensure_wanet_grids(experiment_root, k=4):
+    identity_path, noise_path = get_wanet_grid_paths(experiment_root, k=k)
     identity_path.parent.mkdir(parents=True, exist_ok=True)
     if identity_path.exists() and noise_path.exists():
         return torch.load(identity_path), torch.load(noise_path), identity_path, noise_path
 
-    identity_grid, noise_grid = gen_wanet_grid()
+    identity_grid, noise_grid = gen_wanet_grid(k=k)
     torch.save(identity_grid, identity_path)
     torch.save(noise_grid, noise_path)
     return identity_grid, noise_grid, identity_path, noise_path
@@ -180,23 +219,45 @@ def load_reflection_images(reflection_dir, limit=200):
     return images
 
 
-def attack_config(attack_name):
+def default_attack_config(attack_name):
     return {
         "badnets": {"y_target": 1, "poisoned_rate": 0.05},
-        "blended": {"y_target": 1, "poisoned_rate": 0.05},
-        "wanet": {"y_target": 0, "poisoned_rate": 0.1, "noise": True},
-        "refool": {"y_target": 1, "poisoned_rate": 0.05},
+        "blended": {"y_target": 1, "poisoned_rate": 0.05, "trigger_size": 3, "blended_alpha": 0.2},
+        "wanet": {"y_target": 0, "poisoned_rate": 0.1, "noise": True, "grid_k": 4},
+        "refool": {"y_target": 1, "poisoned_rate": 0.05, "reflection_limit": 200},
     }[attack_name]
 
 
-def build_attack(attack_name, trainset, testset, experiment_root, reflection_dir=None, model=None, seed=GLOBAL_SEED):
+def attack_config(attack_name, args=None):
+    config = dict(default_attack_config(attack_name))
+    if args is None:
+        return config
+
+    if getattr(args, "y_target", None) is not None:
+        config["y_target"] = args.y_target
+    if getattr(args, "poisoned_rate", None) is not None:
+        config["poisoned_rate"] = args.poisoned_rate
+    if getattr(args, "trigger_size", None) is not None:
+        config["trigger_size"] = args.trigger_size
+    if getattr(args, "blended_alpha", None) is not None:
+        config["blended_alpha"] = args.blended_alpha
+    if getattr(args, "wanet_grid_k", None) is not None:
+        config["grid_k"] = args.wanet_grid_k
+    if getattr(args, "wanet_noise", None) is not None:
+        config["noise"] = args.wanet_noise
+    if getattr(args, "reflection_limit", None) is not None:
+        config["reflection_limit"] = args.reflection_limit
+    return config
+
+
+def build_attack(attack_name, trainset, testset, experiment_root, reflection_dir=None, model=None, seed=GLOBAL_SEED, args=None):
     attack_name = attack_name.lower()
-    config = attack_config(attack_name)
+    config = attack_config(attack_name, args=args)
     model = model if model is not None else build_resnet18()
     loss = nn.CrossEntropyLoss()
 
     if attack_name == "badnets":
-        pattern, weight = build_badnets_pattern(alpha=1.0)
+        pattern, weight = build_badnets_pattern(trigger_size=config.get("trigger_size", 3), alpha=1.0)
         return core.BadNets(
             train_dataset=trainset,
             test_dataset=testset,
@@ -213,7 +274,10 @@ def build_attack(attack_name, trainset, testset, experiment_root, reflection_dir
         )
 
     if attack_name == "blended":
-        pattern, weight = build_badnets_pattern(alpha=0.2)
+        pattern, weight = build_badnets_pattern(
+            trigger_size=config.get("trigger_size", 3),
+            alpha=config.get("blended_alpha", 0.2),
+        )
         return core.Blended(
             train_dataset=trainset,
             test_dataset=testset,
@@ -230,7 +294,7 @@ def build_attack(attack_name, trainset, testset, experiment_root, reflection_dir
         )
 
     if attack_name == "wanet":
-        identity_grid, noise_grid, _, _ = ensure_wanet_grids(experiment_root)
+        identity_grid, noise_grid, _, _ = ensure_wanet_grids(experiment_root, k=config.get("grid_k", 4))
         return core.WaNet(
             train_dataset=trainset,
             test_dataset=testset,
@@ -246,7 +310,10 @@ def build_attack(attack_name, trainset, testset, experiment_root, reflection_dir
         )
 
     if attack_name == "refool":
-        reflection_images = load_reflection_images(reflection_dir or DEFAULT_REFLECTION_DIR)
+        reflection_images = load_reflection_images(
+            reflection_dir or DEFAULT_REFLECTION_DIR,
+            limit=config.get("reflection_limit", 200),
+        )
         return core.Refool(
             train_dataset=trainset,
             test_dataset=testset,
@@ -304,6 +371,14 @@ def require_checkpoint(path_like, description):
     return path
 
 
+def resolve_schedule(default_schedule, args):
+    if getattr(args, "disable_schedule", False):
+        return []
+    if getattr(args, "schedule", None) is not None:
+        return list(args.schedule)
+    return list(default_schedule)
+
+
 def default_attack_schedule(args, benign_training, attack_name, save_dir, experiment_name):
     attack_name = attack_name.lower()
     schedule = {
@@ -321,45 +396,31 @@ def default_attack_schedule(args, benign_training, attack_name, save_dir, experi
     }
 
     if attack_name in {"badnets", "blended"}:
-        schedule.update(
-            {
-                "lr": 0.01,
-                "momentum": 0.9,
-                "weight_decay": 5e-4,
-                "gamma": 0.1,
-                "schedule": [20],
-                "epochs": 30,
-            }
-        )
+        defaults = {"lr": 0.01, "momentum": 0.9, "weight_decay": 5e-4, "gamma": 0.1, "schedule": [20], "epochs": 30}
     elif attack_name == "wanet":
-        schedule.update(
-            {
-                "lr": 0.1,
-                "momentum": 0.9,
-                "weight_decay": 5e-4,
-                "gamma": 0.1,
-                "schedule": [150, 180],
-                "epochs": 200,
-            }
-        )
+        defaults = {"lr": 0.1, "momentum": 0.9, "weight_decay": 5e-4, "gamma": 0.1, "schedule": [150, 180], "epochs": 200}
     elif attack_name == "refool":
-        schedule.update(
-            {
-                "lr": 0.1,
-                "momentum": 0.9,
-                "weight_decay": 5e-4,
-                "gamma": 0.1,
-                "schedule": [50, 75],
-                "epochs": 100,
-            }
-        )
+        defaults = {"lr": 0.1, "momentum": 0.9, "weight_decay": 5e-4, "gamma": 0.1, "schedule": [50, 75], "epochs": 100}
     else:
         raise ValueError(f"Unsupported attack schedule for: {attack_name}")
+
+    schedule.update(defaults)
+    if args.lr is not None:
+        schedule["lr"] = args.lr
+    if args.momentum is not None:
+        schedule["momentum"] = args.momentum
+    if args.weight_decay is not None:
+        schedule["weight_decay"] = args.weight_decay
+    if args.gamma is not None:
+        schedule["gamma"] = args.gamma
+    if args.epochs is not None:
+        schedule["epochs"] = args.epochs
+    schedule["schedule"] = resolve_schedule(defaults["schedule"], args)
     return schedule
 
 
 def default_refine_schedule(args, attack_name, save_dir):
-    return {
+    defaults = {
         "device": args.device,
         "CUDA_VISIBLE_DEVICES": args.gpu_id,
         "GPU_num": 1,
@@ -379,6 +440,23 @@ def default_refine_schedule(args, attack_name, save_dir):
         "save_dir": str(save_dir),
         "experiment_name": f"gtsrb_refine_{attack_name}_train",
     }
+    schedule = dict(defaults)
+    if args.lr is not None:
+        schedule["lr"] = args.lr
+    if args.weight_decay is not None:
+        schedule["weight_decay"] = args.weight_decay
+    if args.gamma is not None:
+        schedule["gamma"] = args.gamma
+    if args.epochs is not None:
+        schedule["epochs"] = args.epochs
+    if args.betas is not None:
+        schedule["betas"] = tuple(args.betas)
+    if args.eps is not None:
+        schedule["eps"] = args.eps
+    if args.amsgrad:
+        schedule["amsgrad"] = True
+    schedule["schedule"] = resolve_schedule(defaults["schedule"], args)
+    return schedule
 
 
 def load_model_checkpoint(model, checkpoint_path):

@@ -6,6 +6,7 @@ import torch
 from _common import (
     ATTACK_CANONICAL,
     DEFAULT_REFLECTION_DIR,
+    add_common_attack_args,
     attack_config,
     build_attack,
     build_refine_defense,
@@ -47,7 +48,7 @@ def main():
     parser.add_argument("--attack-checkpoint", default=None)
     parser.add_argument("--refine-checkpoint", default=None)
     parser.add_argument("--arr-path", default=None)
-    parser.add_argument("--reflection-dir", default=str(DEFAULT_REFLECTION_DIR))
+    add_common_attack_args(parser, include_reflection=True)
     args = parser.parse_args()
 
     set_global_seed(args.seed)
@@ -66,6 +67,7 @@ def main():
         reflection_dir=args.reflection_dir,
         model=attack_model,
         seed=args.seed,
+        args=args,
     )
     _, poisoned_testset = attack.get_poisoned_dataset()
 

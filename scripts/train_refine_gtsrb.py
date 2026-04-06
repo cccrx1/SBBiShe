@@ -1,6 +1,8 @@
 from _common import (
     ATTACK_CANONICAL,
     DEFAULT_REFLECTION_DIR,
+    add_common_attack_args,
+    add_refine_training_args,
     build_attack,
     build_refine_defense,
     build_resnet18,
@@ -16,9 +18,10 @@ from _common import (
 
 def main():
     parser = parse_basic_args("Train REFINE for a specific GTSRB attack.")
+    add_refine_training_args(parser)
+    add_common_attack_args(parser, include_reflection=True)
     parser.add_argument("--attack", choices=tuple(ATTACK_CANONICAL.keys()), required=True)
     parser.add_argument("--attack-checkpoint", default=None)
-    parser.add_argument("--reflection-dir", default=str(DEFAULT_REFLECTION_DIR))
     args = parser.parse_args()
 
     set_global_seed(args.seed)
@@ -37,6 +40,7 @@ def main():
         reflection_dir=args.reflection_dir,
         model=attack_model,
         seed=args.seed,
+        args=args,
     )
     poisoned_trainset, poisoned_testset = attack.get_poisoned_dataset()
 

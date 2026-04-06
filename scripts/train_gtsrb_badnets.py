@@ -1,4 +1,6 @@
 from _common import (
+    add_attack_training_args,
+    add_common_attack_args,
     attack_output_root,
     build_attack,
     default_attack_schedule,
@@ -10,11 +12,13 @@ from _common import (
 
 def main():
     parser = parse_basic_args("Train BadNets on GTSRB.")
+    add_attack_training_args(parser)
+    add_common_attack_args(parser, include_reflection=False)
     args = parser.parse_args()
 
     set_global_seed(args.seed)
     trainset, testset = load_gtsrb_datasets(args.data_root, attack_name="badnets")
-    attack = build_attack("badnets", trainset, testset, args.experiment_root, seed=args.seed)
+    attack = build_attack("badnets", trainset, testset, args.experiment_root, seed=args.seed, args=args)
 
     save_dir = attack_output_root(args.experiment_root, "badnets")
     schedule = default_attack_schedule(

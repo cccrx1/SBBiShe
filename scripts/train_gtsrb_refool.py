@@ -1,5 +1,7 @@
 from _common import (
     DEFAULT_REFLECTION_DIR,
+    add_attack_training_args,
+    add_common_attack_args,
     attack_output_root,
     build_attack,
     default_attack_schedule,
@@ -11,7 +13,8 @@ from _common import (
 
 def main():
     parser = parse_basic_args("Train Refool on GTSRB.")
-    parser.add_argument("--reflection-dir", default=str(DEFAULT_REFLECTION_DIR))
+    add_attack_training_args(parser)
+    add_common_attack_args(parser, include_reflection=True)
     args = parser.parse_args()
 
     set_global_seed(args.seed)
@@ -23,6 +26,7 @@ def main():
         args.experiment_root,
         reflection_dir=args.reflection_dir,
         seed=args.seed,
+        args=args,
     )
 
     save_dir = attack_output_root(args.experiment_root, "refool")
