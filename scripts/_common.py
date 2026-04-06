@@ -134,7 +134,7 @@ def gen_wanet_grid(height=IMAGE_SIZE, k=4):
     noise_grid = nn.functional.interpolate(ins, size=height, mode="bicubic", align_corners=True)
     noise_grid = noise_grid.permute(0, 2, 3, 1)
     array1d = torch.linspace(-1, 1, steps=height)
-    x, y = torch.meshgrid(array1d, array1d)
+    x, y = torch.meshgrid(array1d, array1d, indexing="ij")
     identity_grid = torch.stack((y, x), 2)[None, ...]
     return identity_grid, noise_grid
 
