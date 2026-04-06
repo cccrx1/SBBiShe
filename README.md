@@ -72,6 +72,8 @@ pip install -r requirements.txt
 
 更具体的本地 smoke test 命令见 [`SMOKE_TEST.md`](/c:/Users/17672/Documents/Projects/SBBiShe/SMOKE_TEST.md)。
 
+完整的项目与论文实验说明见 [`THESIS_GUIDE.md`](/c:/Users/17672/Documents/Projects/SBBiShe/THESIS_GUIDE.md)。
+
 ## 本地与服务器分工建议
 
 - 本地 3060 6G：改代码、检查数据路径、做 1 epoch smoke test、确认脚本可启动。

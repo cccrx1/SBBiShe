@@ -17,6 +17,7 @@
 |-- README.md          # 使用说明
 |-- EXPERIMENTS.md     # 结果产物说明
 |-- SMOKE_TEST.md      # 本地 1 epoch 验证命令
+|-- THESIS_GUIDE.md    # 项目与论文实验总手册
 |-- requirements.txt   # 最小依赖
 `-- PROJECT_INDEX.md   # AI 导向索引
 ```
@@ -73,4 +74,5 @@
   - 这里集中定义了数据加载、攻击配置、路径规则、GTSRB 准备逻辑和 checkpoint 查找逻辑。
 - 再读 [`SMOKE_TEST.md`](/c:/Users/17672/Documents/Projects/SBBiShe/SMOKE_TEST.md)
   - 这里记录了最短验证路径和命令。
+- 若要快速了解整个项目演进、环境和实验约定，读 [`THESIS_GUIDE.md`](/c:/Users/17672/Documents/Projects/SBBiShe/THESIS_GUIDE.md)。
 - 若看 REFINE 主线，优先读 [`scripts/train_refine_gtsrb.py`](/c:/Users/17672/Documents/Projects/SBBiShe/scripts/train_refine_gtsrb.py) 和 [`scripts/eval_refine_gtsrb.py`](/c:/Users/17672/Documents/Projects/SBBiShe/scripts/eval_refine_gtsrb.py)。
