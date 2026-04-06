@@ -61,15 +61,15 @@ class REFINE(Base):
         if pretrain is not None:
             self.unet.load_state_dict(torch.load(pretrain), strict=False)
         if arr_path is not None:
-            self.arr_shuffle = np.array(torch.load(arr_path))
+            self.arr_shuffle = np.array(torch.load(arr_path), dtype=np.int64)
         else:
             self.init_label_shuffle()
         
     def init_label_shuffle(self):
         start = 0
         end = self.num_classes
-        arr = np.array([i for i in range(self.num_classes)])
-        arr_shuffle = np.array([i for i in range(self.num_classes)])
+        arr = np.array([i for i in range(self.num_classes)], dtype=np.int64)
+        arr_shuffle = np.array([i for i in range(self.num_classes)], dtype=np.int64)
         while True:
             num = sum(arr[start:end] == arr_shuffle[start:end])
             if num == 0:
@@ -79,7 +79,7 @@ class REFINE(Base):
 
     def label_shuffle(self, label):
         label_new = torch.zeros_like(label)
-        index = torch.from_numpy(self.arr_shuffle).repeat(label.shape[0], 1).cuda()
+        index = torch.from_numpy(self.arr_shuffle).to(device=label.device, dtype=torch.int64).repeat(label.shape[0], 1)
         label_new = label_new.scatter(1, index, label)
         return label_new
     
@@ -183,7 +183,7 @@ class REFINE(Base):
         supconloss_func = SupConLoss()
         optimizer = torch.optim.Adam(self.unet.parameters(), schedule['lr'], schedule['betas'], schedule['eps'], schedule['weight_decay'], schedule['amsgrad'])
 
-        work_dir = osp.join(schedule['save_dir'], schedule['experiment_name'] + '_' + time.strftime("%Y-%m-%d_%H:%M:%S", time.localtime()))
+        work_dir = osp.join(schedule['save_dir'], schedule['experiment_name'] + '_' + time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime()))
         os.makedirs(work_dir, exist_ok=True)
         log = Log(osp.join(work_dir, 'log.txt'))
         torch.save(self.arr_shuffle, os.path.join(work_dir, 'label_shuffle.pth'))
@@ -343,7 +343,7 @@ class REFINE(Base):
             dataset (types in support_list): Dataset.
             schedule (dict): Schedule for testing.
         """
-        work_dir = osp.join(schedule['save_dir'], schedule['experiment_name'] + '_' + time.strftime("%Y-%m-%d_%H:%M:%S", time.localtime()))
+        work_dir = osp.join(schedule['save_dir'], schedule['experiment_name'] + '_' + time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime()))
         os.makedirs(work_dir, exist_ok=True)
 
         # print('saving...')

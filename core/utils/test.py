@@ -61,7 +61,7 @@ def test(model, dataset, schedule):
     if 'test_model' in schedule:
         model.load_state_dict(torch.load(schedule['test_model']), strict=False)
 
-    work_dir = osp.join(schedule['save_dir'], schedule['experiment_name'] + '_' + time.strftime("%Y-%m-%d_%H:%M:%S", time.localtime()))
+    work_dir = osp.join(schedule['save_dir'], schedule['experiment_name'] + '_' + time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime()))
     os.makedirs(work_dir, exist_ok=True)
     log = Log(osp.join(work_dir, 'log.txt'))
 

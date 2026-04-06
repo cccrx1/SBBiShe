@@ -405,13 +405,23 @@ def latest_timestamped_dir(root, prefix):
 
 
 def latest_checkpoint(root, prefix):
-    exp_dir = latest_timestamped_dir(root, prefix)
-    if exp_dir is None:
+    root = to_path(root)
+    if not root.exists():
         return None
-    checkpoints = sorted(exp_dir.glob("ckpt_epoch_*.pth"))
-    if not checkpoints:
+
+    candidates = []
+    for path in root.iterdir():
+        if not path.is_dir() or not path.name.startswith(prefix):
+            continue
+        checkpoints = sorted(path.glob("ckpt_epoch_*.pth"))
+        if checkpoints:
+            candidates.append((path.stat().st_mtime, checkpoints[-1]))
+
+    if not candidates:
         return None
-    return checkpoints[-1]
+
+    candidates.sort(key=lambda item: item[0])
+    return candidates[-1][1]
 
 
 def require_checkpoint(path_like, description):
