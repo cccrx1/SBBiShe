@@ -439,8 +439,17 @@ def resolve_schedule(default_schedule, args):
     return list(default_schedule)
 
 
+def poisoned_rate_tag(poisoned_rate):
+    text = f"{float(poisoned_rate):.6f}".rstrip("0").rstrip(".")
+    return f"pr{text.replace('.', 'p')}"
+
+
 def default_attack_schedule(args, benign_training, attack_name, save_dir, experiment_name):
     attack_name = attack_name.lower()
+    config = attack_config(attack_name, args=args)
+    experiment_name_with_rate = experiment_name
+    if not benign_training:
+        experiment_name_with_rate = f"{experiment_name}_{poisoned_rate_tag(config['poisoned_rate'])}"
     schedule = {
         "device": args.device,
         "CUDA_VISIBLE_DEVICES": args.gpu_id,
@@ -452,7 +461,9 @@ def default_attack_schedule(args, benign_training, attack_name, save_dir, experi
         "test_epoch_interval": args.test_interval,
         "save_epoch_interval": args.save_interval,
         "save_dir": str(save_dir),
-        "experiment_name": experiment_name,
+        "experiment_name": experiment_name_with_rate,
+        "y_target": config["y_target"],
+        "poisoned_rate": config["poisoned_rate"],
     }
 
     if attack_name in {"badnets", "blended"}:
@@ -480,6 +491,9 @@ def default_attack_schedule(args, benign_training, attack_name, save_dir, experi
 
 
 def default_refine_schedule(args, attack_name, save_dir):
+    attack_name = attack_name.lower()
+    config = attack_config(attack_name, args=args)
+    experiment_name = f"gtsrb_refine_{attack_name}_train_{poisoned_rate_tag(config['poisoned_rate'])}"
     defaults = {
         "device": args.device,
         "CUDA_VISIBLE_DEVICES": args.gpu_id,
@@ -498,7 +512,9 @@ def default_refine_schedule(args, attack_name, save_dir):
         "test_epoch_interval": args.test_interval,
         "save_epoch_interval": args.save_interval,
         "save_dir": str(save_dir),
-        "experiment_name": f"gtsrb_refine_{attack_name}_train",
+        "experiment_name": experiment_name,
+        "y_target": config["y_target"],
+        "poisoned_rate": config["poisoned_rate"],
     }
     schedule = dict(defaults)
     if args.lr is not None:

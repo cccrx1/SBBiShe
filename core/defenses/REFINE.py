@@ -16,6 +16,7 @@ import time
 
 import numpy as np
 import torch
+import torch.nn as nn
 from torch.utils.data import DataLoader
 import torch.nn.functional as F
 from torchvision.datasets import CIFAR10, MNIST, DatasetFolder
@@ -187,6 +188,9 @@ class REFINE(Base):
         os.makedirs(work_dir, exist_ok=True)
         log = Log(osp.join(work_dir, 'log.txt'))
         torch.save(self.arr_shuffle, os.path.join(work_dir, 'label_shuffle.pth'))
+
+        log('==========Schedule parameters==========\n')
+        log(str(schedule) + '\n')
 
         # log and output:
         # 1. ouput loss and time

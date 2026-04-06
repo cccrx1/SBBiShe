@@ -16,13 +16,28 @@ from _common import (
     load_gtsrb_datasets,
     load_model_checkpoint,
     manual_refine_eval,
+    poisoned_rate_tag,
     refine_output_root,
     set_global_seed,
     to_path,
 )
 
 
-def write_eval_log(log_dir, attack_name, attack_checkpoint, refine_checkpoint, arr_path, ba_metric, asr_metric, correct_ba, total_ba, correct_asr, total_asr):
+def write_eval_log(
+    log_dir,
+    attack_name,
+    attack_checkpoint,
+    refine_checkpoint,
+    arr_path,
+    y_target,
+    poisoned_rate,
+    ba_metric,
+    asr_metric,
+    correct_ba,
+    total_ba,
+    correct_asr,
+    total_asr,
+):
     log_dir.mkdir(parents=True, exist_ok=True)
     log_path = log_dir / "results.txt"
     lines = [
@@ -30,6 +45,8 @@ def write_eval_log(log_dir, attack_name, attack_checkpoint, refine_checkpoint, a
         f"attack_checkpoint={attack_checkpoint}",
         f"refine_checkpoint={refine_checkpoint}",
         f"label_shuffle={arr_path}",
+        f"y_target={y_target}",
+        f"poisoned_rate={poisoned_rate}",
         f"BA={ba_metric:.6f} ({correct_ba}/{total_ba})",
         f"ASR_NoTarget={asr_metric:.6f} ({correct_asr}/{total_asr})",
     ]
@@ -85,7 +102,9 @@ def main():
     )
 
     device = torch.device("cuda:0" if args.device == "GPU" and torch.cuda.is_available() else "cpu")
-    y_target = attack_config(attack_name)["y_target"]
+    config = attack_config(attack_name, args=args)
+    y_target = config["y_target"]
+    poisoned_rate = config["poisoned_rate"]
     correct_ba, total_ba, ba_metric = manual_refine_eval(defense, testset, device, args.batch_size)
     correct_asr, total_asr, asr_metric = manual_refine_eval(
         defense,
@@ -101,11 +120,13 @@ def main():
 
     eval_root = refine_output_root(args.experiment_root, attack_name, "eval")
     write_eval_log(
-        eval_root / f"gtsrb_refine_{attack_name}_eval_latest",
+        eval_root / f"gtsrb_refine_{attack_name}_eval_{poisoned_rate_tag(poisoned_rate)}_latest",
         attack_name,
         Path(attack_checkpoint),
         Path(refine_checkpoint),
         Path(arr_path),
+        y_target,
+        poisoned_rate,
         ba_metric,
         asr_metric,
         correct_ba,
