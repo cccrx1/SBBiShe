@@ -191,6 +191,10 @@ class REFINE(Base):
 
         log('==========Schedule parameters==========\n')
         log(str(schedule) + '\n')
+        if 'poisoned_rate' in schedule:
+            log(f"poisoned_rate={schedule['poisoned_rate']}\n")
+        if 'y_target' in schedule:
+            log(f"y_target={schedule['y_target']}\n")
 
         # log and output:
         # 1. ouput loss and time

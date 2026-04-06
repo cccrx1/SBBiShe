@@ -137,6 +137,10 @@ class Base(object):
 
         log('==========Schedule parameters==========\n')
         log(str(self.current_schedule)+'\n')
+        if 'poisoned_rate' in self.current_schedule:
+            log(f"poisoned_rate={self.current_schedule['poisoned_rate']}\n")
+        if 'y_target' in self.current_schedule:
+            log(f"y_target={self.current_schedule['y_target']}\n")
 
         if 'pretrain' in self.current_schedule:
             self.model.load_state_dict(torch.load(self.current_schedule['pretrain'], map_location='cpu'), strict=False)
