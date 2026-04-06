@@ -103,14 +103,14 @@ class AddDatasetFolderTrigger(AddTrigger):
                 img = torch.from_numpy(img)
                 img = F.convert_image_dtype(img, torch.float)
                 img = self.add_trigger(img, noise=self.noise)
-                img = img.numpy()
+                img = np.clip(img.numpy() * 255, 0, 255).round().astype(np.uint8)
 
             # H x W x C
             else:
                 img = torch.from_numpy(img).permute(2, 0, 1)
                 img = F.convert_image_dtype(img, torch.float)
                 img = self.add_trigger(img, noise=self.noise)
-                img = img.permute(1, 2, 0).numpy()
+                img = np.clip(img.permute(1, 2, 0).numpy() * 255, 0, 255).round().astype(np.uint8)
 
             return img
         elif type(img) == torch.Tensor:
