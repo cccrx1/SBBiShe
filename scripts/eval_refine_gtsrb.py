@@ -121,6 +121,7 @@ def main():
         args.batch_size,
         y_target=y_target,
         ignore_target=True,
+        label_dataset=testset,
     )
 
     print(f"BA: {ba_metric:.6f} ({correct_ba}/{total_ba})")

@@ -585,7 +585,7 @@ def infer_refine_artifacts(experiment_root, attack_name, poisoned_rate=None):
     return checkpoints[-1], arr_path, exp_dir
 
 
-def manual_refine_eval(defense, dataset, device, batch_size, y_target=None, ignore_target=False):
+def manual_refine_eval(defense, dataset, device, batch_size, y_target=None, ignore_target=False, label_dataset=None):
     loader = torch.utils.data.DataLoader(
         dataset,
         batch_size=batch_size,
@@ -594,6 +594,16 @@ def manual_refine_eval(defense, dataset, device, batch_size, y_target=None, igno
         drop_last=False,
         pin_memory=True,
     )
+    label_loader = None
+    if label_dataset is not None:
+        label_loader = torch.utils.data.DataLoader(
+            label_dataset,
+            batch_size=batch_size,
+            shuffle=False,
+            num_workers=0,
+            drop_last=False,
+            pin_memory=True,
+        )
     defense.unet = defense.unet.to(device)
     defense.unet.eval()
     defense.model = defense.model.to(device)
@@ -601,13 +611,18 @@ def manual_refine_eval(defense, dataset, device, batch_size, y_target=None, igno
 
     total = 0
     correct = 0
-    for batch_img, batch_label in loader:
+    if label_loader is None:
+        iterator = ((imgs, labels, labels) for imgs, labels in loader)
+    else:
+        iterator = ((imgs, labels, clean_labels) for (imgs, labels), (_, clean_labels) in zip(loader, label_loader))
+
+    for batch_img, batch_label, batch_clean_label in iterator:
         batch_img = batch_img.to(device)
         logits = defense.forward(batch_img).cpu()
         preds = logits.argmax(dim=1)
-        mask = torch.ones_like(batch_label, dtype=torch.bool)
+        mask = torch.ones_like(batch_clean_label, dtype=torch.bool)
         if ignore_target and y_target is not None:
-            mask = batch_label != y_target
+            mask = batch_clean_label != y_target
         if mask.sum().item() == 0:
             continue
         filtered_preds = preds[mask]
