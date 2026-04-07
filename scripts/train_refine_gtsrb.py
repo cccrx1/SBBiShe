@@ -1,10 +1,8 @@
 from _common import (
     ATTACK_CANONICAL,
-    DEFAULT_REFLECTION_DIR,
     add_common_attack_args,
     add_refine_training_args,
     attack_config,
-    build_attack,
     build_refine_defense,
     build_resnet18,
     default_refine_schedule,
@@ -38,22 +36,10 @@ def main():
     )
     load_model_checkpoint(attack_model, checkpoint)
 
-    attack = build_attack(
-        attack_name,
-        trainset,
-        testset,
-        args.experiment_root,
-        reflection_dir=args.reflection_dir,
-        model=attack_model,
-        seed=args.seed,
-        args=args,
-    )
-    poisoned_trainset, poisoned_testset = attack.get_poisoned_dataset()
-
     defense = build_refine_defense(attack_model, seed=args.seed)
     save_dir = refine_output_root(args.experiment_root, attack_name, "train")
     schedule = default_refine_schedule(args, attack_name, save_dir)
-    defense.train_unet(poisoned_trainset, poisoned_testset, schedule)
+    defense.train_unet(trainset, testset, schedule)
 
 
 if __name__ == "__main__":
