@@ -3,6 +3,7 @@ from _common import (
     DEFAULT_REFLECTION_DIR,
     add_common_attack_args,
     add_refine_training_args,
+    attack_config,
     build_attack,
     build_refine_defense,
     build_resnet18,
@@ -26,10 +27,15 @@ def main():
 
     set_global_seed(args.seed)
     attack_name = args.attack.lower()
+    config = attack_config(attack_name, args=args)
     trainset, testset = load_gtsrb_datasets(args.data_root, attack_name=attack_name)
 
     attack_model = build_resnet18()
-    checkpoint = args.attack_checkpoint or infer_attack_checkpoint(args.experiment_root, attack_name)
+    checkpoint = args.attack_checkpoint or infer_attack_checkpoint(
+        args.experiment_root,
+        attack_name,
+        poisoned_rate=config["poisoned_rate"],
+    )
     load_model_checkpoint(attack_model, checkpoint)
 
     attack = build_attack(

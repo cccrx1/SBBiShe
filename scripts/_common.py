@@ -553,8 +553,11 @@ def build_refine_defense(model, checkpoint_path=None, arr_path=None, seed=GLOBAL
     )
 
 
-def infer_attack_checkpoint(experiment_root, attack_name):
-    path = latest_checkpoint(attack_output_root(experiment_root, attack_name), f"gtsrb_{attack_name}")
+def infer_attack_checkpoint(experiment_root, attack_name, poisoned_rate=None):
+    prefix = f"gtsrb_{attack_name}"
+    if poisoned_rate is not None:
+        prefix = f"{prefix}_{poisoned_rate_tag(poisoned_rate)}"
+    path = latest_checkpoint(attack_output_root(experiment_root, attack_name), prefix)
     if path is None:
         raise FileNotFoundError(
             f"No trained checkpoint found for {ATTACK_CANONICAL[attack_name]} under "
@@ -563,8 +566,11 @@ def infer_attack_checkpoint(experiment_root, attack_name):
     return path
 
 
-def infer_refine_artifacts(experiment_root, attack_name):
-    exp_dir = latest_timestamped_dir(refine_output_root(experiment_root, attack_name, "train"), f"gtsrb_refine_{attack_name}_train")
+def infer_refine_artifacts(experiment_root, attack_name, poisoned_rate=None):
+    prefix = f"gtsrb_refine_{attack_name}_train"
+    if poisoned_rate is not None:
+        prefix = f"{prefix}_{poisoned_rate_tag(poisoned_rate)}"
+    exp_dir = latest_timestamped_dir(refine_output_root(experiment_root, attack_name, "train"), prefix)
     if exp_dir is None:
         raise FileNotFoundError(
             f"No REFINE training run found for {ATTACK_CANONICAL[attack_name]} under "

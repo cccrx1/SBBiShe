@@ -70,10 +70,17 @@ def main():
 
     set_global_seed(args.seed)
     attack_name = args.attack.lower()
+    config = attack_config(attack_name, args=args)
+    y_target = config["y_target"]
+    poisoned_rate = config["poisoned_rate"]
     trainset, testset = load_gtsrb_datasets(args.data_root, attack_name=attack_name)
 
     attack_model = build_resnet18()
-    attack_checkpoint = args.attack_checkpoint or infer_attack_checkpoint(args.experiment_root, attack_name)
+    attack_checkpoint = args.attack_checkpoint or infer_attack_checkpoint(
+        args.experiment_root,
+        attack_name,
+        poisoned_rate=poisoned_rate,
+    )
     load_model_checkpoint(attack_model, attack_checkpoint)
 
     attack = build_attack(
@@ -92,7 +99,11 @@ def main():
         refine_checkpoint = to_path(args.refine_checkpoint)
         arr_path = to_path(args.arr_path)
     else:
-        refine_checkpoint, arr_path, _ = infer_refine_artifacts(args.experiment_root, attack_name)
+        refine_checkpoint, arr_path, _ = infer_refine_artifacts(
+            args.experiment_root,
+            attack_name,
+            poisoned_rate=poisoned_rate,
+        )
 
     defense = build_refine_defense(
         attack_model,
@@ -102,9 +113,6 @@ def main():
     )
 
     device = torch.device("cuda:0" if args.device == "GPU" and torch.cuda.is_available() else "cpu")
-    config = attack_config(attack_name, args=args)
-    y_target = config["y_target"]
-    poisoned_rate = config["poisoned_rate"]
     correct_ba, total_ba, ba_metric = manual_refine_eval(defense, testset, device, args.batch_size)
     correct_asr, total_asr, asr_metric = manual_refine_eval(
         defense,
