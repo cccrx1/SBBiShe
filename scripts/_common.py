@@ -554,10 +554,13 @@ def build_refine_defense(model, checkpoint_path=None, arr_path=None, seed=GLOBAL
 
 
 def infer_attack_checkpoint(experiment_root, attack_name, poisoned_rate=None):
-    prefix = f"gtsrb_{attack_name}"
+    base_prefix = f"gtsrb_{attack_name}"
+    prefix = base_prefix
     if poisoned_rate is not None:
         prefix = f"{prefix}_{poisoned_rate_tag(poisoned_rate)}"
     path = latest_checkpoint(attack_output_root(experiment_root, attack_name), prefix)
+    if path is None and poisoned_rate is not None:
+        path = latest_checkpoint(attack_output_root(experiment_root, attack_name), base_prefix)
     if path is None:
         raise FileNotFoundError(
             f"No trained checkpoint found for {ATTACK_CANONICAL[attack_name]} under "
