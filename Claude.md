@@ -89,6 +89,7 @@ SBBiShe/
 
 推荐通用入口（优先维护）：
 
+- `scripts/bootstrap_datasets.py`：在无数据集时自动下载并整理为项目支持格式
 - `scripts/train_benign.py`：训练 benign 基线（`--dataset`）
 - `scripts/train_attack.py`：训练攻击模型（`--dataset` + `--attack`）
 - `scripts/train_refine.py`：训练 REFINE（`--dataset` + `--attack`）
@@ -119,6 +120,12 @@ SBBiShe/
 ## 5. 数据与前置条件
 
 ### 5.1 GTSRB 测试集必须先整理
+
+如果本地没有数据集，优先执行自动准备脚本：
+
+```bash
+python scripts/bootstrap_datasets.py --data-root datasets --dataset gtsrb
+```
 
 原始 GTSRB `testset` 往往是扁平目录，而本项目使用 `torchvision.datasets.DatasetFolder` 读取，要求测试集必须整理成分类子目录结构。
 
