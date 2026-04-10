@@ -4,11 +4,11 @@
 
 ## 1. 项目定位
 
-本仓库是面向本科毕业论文的最小实验版本，目标不是保留完整通用 backdoor toolbox，而是围绕一条固定、可复现的实验链路开展工作。
+本仓库是面向本科毕业论文的最小实验版本，目标不是保留完整通用 backdoor toolbox，而是围绕固定、可复现的实验链路开展工作。
 
-当前主线固定为：
+当前主线（论文基线）固定为：
 
-- 数据集：GTSRB
+- 数据集：GTSRB（主线）
 - 分类模型：ResNet18
 - 攻击：BadNets、Blended、WaNet、Refool
 - 防御：REFINE
@@ -20,7 +20,7 @@
 3. 针对每种攻击训练 REFINE
 4. 评估 BA 和 ASR_NoTarget
 
-如果后续任务与这条主线冲突，优先确认是否属于“论文主线实验”还是“单独消融/临时调试”。
+当前代码已完成 CUB-200 第一阶段接入（单域分类模式），但若后续任务与主线冲突，优先确认是否属于“论文主线实验”还是“单独消融/临时调试”。
 
 ## 2. 仓库结构速览
 
@@ -73,7 +73,8 @@ SBBiShe/
 它负责定义或统一：
 
 - 默认路径
-- GTSRB 数据加载
+- 数据集配置（gtsrb/cub200）
+- 数据加载分发与 transform
 - 攻击名称规范
 - 各攻击默认参数
 - WaNet grid 生成与复用
@@ -86,7 +87,18 @@ SBBiShe/
 
 ### 4.2 训练/评估脚本
 
+推荐通用入口（优先维护）：
+
+- `scripts/train_benign.py`：训练 benign 基线（`--dataset`）
+- `scripts/train_attack.py`：训练攻击模型（`--dataset` + `--attack`）
+- `scripts/train_refine.py`：训练 REFINE（`--dataset` + `--attack`）
+- `scripts/eval_refine.py`：评估 REFINE（`--dataset` + `--attack`）
+- `scripts/collect_final_results.py`：汇总 REFINE 评估结果到单文件，支持论文宽表导出
+
+兼容入口（保留可用，内部转发到通用入口）：
+
 - `scripts/prepare_gtsrb_testset.py`：整理原始 GTSRB 测试集目录
+- `scripts/prepare_cub200_dataset.py`：将 CUB-200 原始目录整理为 DatasetFolder
 - `scripts/train_gtsrb_benign.py`：训练 benign 基线
 - `scripts/train_gtsrb_badnets.py`：训练 BadNets
 - `scripts/train_gtsrb_blended.py`：训练 Blended
@@ -144,6 +156,7 @@ Refool 需要单独的反射图目录：
 
 - `datasets/GTSRB/train` 存在且有分类子目录
 - `datasets/GTSRB/testset` 已整理成分类目录结构
+- 若涉及 CUB：`datasets/CUB200/train` 与 `datasets/CUB200/test` 存在且有分类子目录
 - 若涉及 Refool：`datasets/refool_reflections` 存在且含有效图像
 - `experiments/` 目录可写
 
@@ -163,7 +176,7 @@ REFINE 训练必须使用 clean `trainset/testset`，不能直接使用 `poisone
 - 若输入本身是 poisoned dataset，训练目标可能会保留后门预测
 - 当前论文主线正是通过 clean-data training 检验 REFINE 是否真正削弱触发器效果
 
-`scripts/train_refine_gtsrb.py` 当前实现也与该口径一致：
+`scripts/train_refine.py`（`--dataset gtsrb`）当前实现与该口径一致：
 
 - 读取 clean GTSRB `trainset/testset`
 - 加载攻击模型 checkpoint
@@ -178,7 +191,7 @@ REFINE 训练必须使用 clean `trainset/testset`，不能直接使用 `poisone
 - `ASR_NoTarget`：在 poisoned testset 上评估，但统计时使用原始 clean 标签
 - 并且忽略原始标签本来就等于目标类的样本
 
-`scripts/eval_refine_gtsrb.py` 和 `_common.py:manual_refine_eval()` 已按这个口径实现。
+`scripts/eval_refine.py`（`--dataset gtsrb`）和 `_common.py:manual_refine_eval()` 已按这个口径实现。
 
 ## 7. 指标解释约定
 
@@ -218,6 +231,7 @@ REFINE 训练必须使用 clean `trainset/testset`，不能直接使用 `poisone
 
 通用参数：
 
+- `--dataset`
 - `--data-root`
 - `--experiment-root`
 - `--gpu-id`
@@ -279,6 +293,8 @@ REFINE 训练必须使用 clean `trainset/testset`，不能直接使用 `poisone
 
 - `datasets/GTSRB/train/...`
 - `datasets/GTSRB/testset/...`
+- `datasets/CUB200/train/...`
+- `datasets/CUB200/test/...`
 - `datasets/refool_reflections/...`
 
 ### 9.2 结果目录
@@ -308,9 +324,13 @@ REFINE 评估通常会产生：
 
 - `results.txt`
 
-`scripts/eval_refine_gtsrb.py` 会把结果写到：
+最终汇总可由以下脚本生成：
 
-- `experiments/refine/<Attack>/eval/gtsrb_refine_<attack>_eval_<poisoned_rate_tag>_latest/results.txt`
+- `scripts/collect_final_results.py`
+
+`scripts/eval_refine.py` 会把结果写到：
+
+- `experiments/refine/<Attack>/eval/<dataset>_refine_<attack>_eval_<poisoned_rate_tag>_latest/results.txt`
 
 ## 10. 运行流程建议
 
@@ -319,9 +339,17 @@ REFINE 评估通常会产生：
 建议优先跑最短链路：`BadNets -> REFINE -> eval`
 
 ```bash
-python scripts/train_gtsrb_badnets.py --data-root datasets --gpu-id 0 --epochs 1 --disable-schedule --batch-size 16 --num-workers 0 --test-interval 1 --save-interval 1
-python scripts/train_refine_gtsrb.py --attack badnets --data-root datasets --gpu-id 0 --epochs 1 --disable-schedule --batch-size 16 --num-workers 0 --test-interval 1 --save-interval 1
-python scripts/eval_refine_gtsrb.py --attack badnets --data-root datasets --gpu-id 0 --batch-size 16
+python scripts/train_attack.py --dataset gtsrb --attack badnets --data-root datasets --gpu-id 0 --epochs 1 --disable-schedule --batch-size 16 --num-workers 0 --test-interval 1 --save-interval 1
+python scripts/train_refine.py --dataset gtsrb --attack badnets --data-root datasets --gpu-id 0 --epochs 1 --disable-schedule --batch-size 16 --num-workers 0 --test-interval 1 --save-interval 1
+python scripts/eval_refine.py --dataset gtsrb --attack badnets --data-root datasets --gpu-id 0 --batch-size 16
+```
+
+如果要做 CUB smoke test，仅把 `--dataset gtsrb` 改为 `--dataset cub200`，并确保 CUB 目录已按 `prepare_cub200_dataset.py` 处理完成。
+
+完成全流程后，建议执行：
+
+```bash
+python scripts/collect_final_results.py --experiment-root experiments --latest-only --output experiments/final_summary/final_results.csv --paper-output experiments/final_summary/final_results_paper.md --paper-format md
 ```
 
 ### 10.2 正式实验顺序
