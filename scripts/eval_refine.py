@@ -55,7 +55,7 @@ def write_eval_log(
     log_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def main():
+def main(cli_args=None):
     parser = argparse.ArgumentParser(description="Evaluate REFINE on a specific attack and dataset.")
     parser.add_argument("--data-root", default="datasets")
     add_dataset_args(parser)
@@ -69,7 +69,7 @@ def main():
     parser.add_argument("--refine-checkpoint", default=None)
     parser.add_argument("--arr-path", default=None)
     add_common_attack_args(parser, include_reflection=True)
-    args = parser.parse_args()
+    args = parser.parse_args(cli_args)
 
     set_global_seed(args.seed)
     attack_name = args.attack.lower()

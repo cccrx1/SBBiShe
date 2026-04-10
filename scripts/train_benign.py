@@ -12,12 +12,12 @@ from _common import (
 )
 
 
-def main():
+def main(cli_args=None):
     parser = parse_basic_args("Train a benign ResNet18 baseline on a supported dataset.")
     add_dataset_args(parser)
     add_attack_training_args(parser)
     add_common_attack_args(parser, include_reflection=False)
-    args = parser.parse_args()
+    args = parser.parse_args(cli_args)
 
     set_global_seed(args.seed)
     trainset, testset = load_datasets(args.dataset, args.data_root, attack_name="badnets")

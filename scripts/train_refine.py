@@ -17,14 +17,14 @@ from _common import (
 )
 
 
-def main():
+def main(cli_args=None):
     parser = parse_basic_args("Train REFINE for a specific attack on a supported dataset.")
     add_dataset_args(parser)
     add_refine_training_args(parser)
     add_common_attack_args(parser, include_reflection=True)
     parser.add_argument("--attack", choices=tuple(ATTACK_CANONICAL.keys()), required=True)
     parser.add_argument("--attack-checkpoint", default=None)
-    args = parser.parse_args()
+    args = parser.parse_args(cli_args)
 
     set_global_seed(args.seed)
     attack_name = args.attack.lower()
