@@ -1,20 +1,21 @@
+import argparse
 from pathlib import Path
 
-import argparse
 import torch
 
 from _common import (
     ATTACK_CANONICAL,
-    DEFAULT_REFLECTION_DIR,
     add_common_attack_args,
+    add_dataset_args,
     attack_config,
     build_attack,
     build_refine_defense,
     build_resnet18,
+    dataset_experiment_prefix,
     get_dataset_spec,
     infer_attack_checkpoint,
     infer_refine_artifacts,
-    load_gtsrb_datasets,
+    load_datasets,
     load_model_checkpoint,
     manual_refine_eval,
     poisoned_rate_tag,
@@ -55,8 +56,9 @@ def write_eval_log(
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Evaluate REFINE on a specific GTSRB attack.")
+    parser = argparse.ArgumentParser(description="Evaluate REFINE on a specific attack and dataset.")
     parser.add_argument("--data-root", default="datasets")
+    add_dataset_args(parser)
     parser.add_argument("--attack", choices=tuple(ATTACK_CANONICAL.keys()), required=True)
     parser.add_argument("--gpu-id", default="0")
     parser.add_argument("--device", choices=("GPU", "CPU"), default="GPU")
@@ -70,18 +72,20 @@ def main():
     args = parser.parse_args()
 
     set_global_seed(args.seed)
-    spec = get_dataset_spec("gtsrb")
     attack_name = args.attack.lower()
+    spec = get_dataset_spec(args.dataset)
     config = attack_config(attack_name, args=args)
     y_target = config["y_target"]
     poisoned_rate = config["poisoned_rate"]
-    trainset, testset = load_gtsrb_datasets(args.data_root, attack_name=attack_name)
 
-    attack_model = build_resnet18()
+    trainset, testset = load_datasets(args.dataset, args.data_root, attack_name=attack_name)
+
+    attack_model = build_resnet18(spec["num_classes"])
     attack_checkpoint = args.attack_checkpoint or infer_attack_checkpoint(
         args.experiment_root,
         attack_name,
         poisoned_rate=poisoned_rate,
+        dataset_name=args.dataset,
     )
     load_model_checkpoint(attack_model, attack_checkpoint)
 
@@ -90,6 +94,7 @@ def main():
         trainset,
         testset,
         args.experiment_root,
+        dataset_name=args.dataset,
         reflection_dir=args.reflection_dir,
         model=attack_model,
         seed=args.seed,
@@ -105,6 +110,7 @@ def main():
             args.experiment_root,
             attack_name,
             poisoned_rate=poisoned_rate,
+            dataset_name=args.dataset,
         )
 
     defense = build_refine_defense(
@@ -130,9 +136,10 @@ def main():
     print(f"BA: {ba_metric:.6f} ({correct_ba}/{total_ba})")
     print(f"ASR_NoTarget: {asr_metric:.6f} ({correct_asr}/{total_asr})")
 
-    eval_root = refine_output_root(args.experiment_root, attack_name, "eval")
+    dataset_prefix = dataset_experiment_prefix(args.dataset)
+    eval_root = refine_output_root(args.experiment_root, attack_name, "eval", dataset_name=args.dataset)
     write_eval_log(
-        eval_root / f"gtsrb_refine_{attack_name}_eval_{poisoned_rate_tag(poisoned_rate)}_latest",
+        eval_root / f"{dataset_prefix}_refine_{attack_name}_eval_{poisoned_rate_tag(poisoned_rate)}_latest",
         attack_name,
         Path(attack_checkpoint),
         Path(refine_checkpoint),

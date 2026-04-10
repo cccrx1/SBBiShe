@@ -20,13 +20,30 @@ if str(REPO_ROOT) not in sys.path:
 import core
 
 
-NUM_CLASSES = 43
-IMAGE_SIZE = 32
 GLOBAL_SEED = 666
 DEFAULT_DATA_ROOT = REPO_ROOT / "datasets"
 DEFAULT_EXPERIMENT_ROOT = REPO_ROOT / "experiments"
 DEFAULT_REFLECTION_DIR = DEFAULT_DATA_ROOT / "refool_reflections"
 IMAGE_EXTENSIONS = ("png", "ppm", "jpg", "jpeg", "bmp")
+
+DATASET_SPECS = {
+    "gtsrb": {
+        "display_name": "GTSRB",
+        "num_classes": 43,
+        "image_size": 32,
+        "train_subdir": "GTSRB/train",
+        "test_subdir": "GTSRB/testset",
+        "task_type": "classification",
+    },
+    "cub200": {
+        "display_name": "CUB200",
+        "num_classes": 200,
+        "image_size": 128,
+        "train_subdir": "CUB200/train",
+        "test_subdir": "CUB200/test",
+        "task_type": "classification",
+    },
+}
 
 ATTACK_NAMES = ("badnets", "blended", "wanet", "refool")
 ATTACK_CANONICAL = {
@@ -50,9 +67,31 @@ def to_path(path_like):
     return Path(path_like).resolve()
 
 
+def get_dataset_spec(dataset_name):
+    normalized = str(dataset_name).strip().lower()
+    if normalized not in DATASET_SPECS:
+        supported = ", ".join(sorted(DATASET_SPECS.keys()))
+        raise ValueError(f"Unsupported dataset: {dataset_name}. Supported datasets: {supported}")
+    return dict(DATASET_SPECS[normalized])
+
+
+def add_dataset_args(parser):
+    parser.add_argument(
+        "--dataset",
+        default="gtsrb",
+        choices=tuple(DATASET_SPECS.keys()),
+        help="Dataset name.",
+    )
+    return parser
+
+
+def dataset_experiment_prefix(dataset_name):
+    return str(dataset_name).strip().lower()
+
+
 def parse_basic_args(description):
     parser = argparse.ArgumentParser(description=description)
-    parser.add_argument("--data-root", default=str(DEFAULT_DATA_ROOT), help="Root directory that contains GTSRB.")
+    parser.add_argument("--data-root", default=str(DEFAULT_DATA_ROOT), help="Root directory that contains datasets.")
     parser.add_argument("--gpu-id", default="0", help="CUDA_VISIBLE_DEVICES value.")
     parser.add_argument("--device", choices=("GPU", "CPU"), default="GPU")
     parser.add_argument("--batch-size", type=int, default=128)
@@ -104,17 +143,20 @@ def add_common_attack_args(parser, include_reflection=False):
     return parser
 
 
-def build_resnet18():
-    return core.models.ResNet(18, NUM_CLASSES)
+def build_resnet18(num_classes=None):
+    if num_classes is None:
+        num_classes = get_dataset_spec("gtsrb")["num_classes"]
+    return core.models.ResNet(18, num_classes)
 
 
 def load_image_bgr(path):
     return cv2.imread(str(path))
 
 
-def make_gtsrb_transforms(attack_name=None, train=True):
+def make_gtsrb_transforms(attack_name=None, train=True, image_size=None):
+    image_size = image_size or get_dataset_spec("gtsrb")["image_size"]
     if attack_name == "refool":
-        items = [transforms.ToPILImage(), transforms.Resize((IMAGE_SIZE, IMAGE_SIZE))]
+        items = [transforms.ToPILImage(), transforms.Resize((image_size, image_size))]
         if train:
             items.append(transforms.RandomHorizontalFlip())
         items.extend(
@@ -128,22 +170,73 @@ def make_gtsrb_transforms(attack_name=None, train=True):
     return transforms.Compose(
         [
             transforms.ToPILImage(),
-            transforms.Resize((IMAGE_SIZE, IMAGE_SIZE)),
+            transforms.Resize((image_size, image_size)),
             transforms.ToTensor(),
         ]
     )
 
 
+def make_cub200_transforms(attack_name=None, train=True, image_size=None):
+    image_size = image_size or get_dataset_spec("cub200")["image_size"]
+    resize_size = int(image_size * 1.15)
+    items = [transforms.ToPILImage(), transforms.Resize((resize_size, resize_size))]
+    if train:
+        items.append(transforms.RandomCrop((image_size, image_size)))
+        items.append(transforms.RandomHorizontalFlip())
+    else:
+        items.append(transforms.CenterCrop((image_size, image_size)))
+
+    items.append(transforms.ToTensor())
+    if attack_name == "refool":
+        items.append(transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)))
+    return transforms.Compose(items)
+
+
+def make_dataset_transforms(dataset_name, attack_name=None, train=True, image_size=None):
+    normalized = str(dataset_name).strip().lower()
+    spec = get_dataset_spec(normalized)
+    size = image_size if image_size is not None else spec["image_size"]
+    if normalized == "gtsrb":
+        return make_gtsrb_transforms(attack_name=attack_name, train=train, image_size=size)
+    if normalized == "cub200":
+        return make_cub200_transforms(attack_name=attack_name, train=train, image_size=size)
+    raise ValueError(f"Unsupported dataset transform pipeline: {dataset_name}")
+
+
+def ensure_datasetfolder_root(root, display_name, split_name):
+    if not root.exists():
+        raise FileNotFoundError(f"{display_name} {split_name} directory not found: {root}")
+    if not any(root.iterdir()):
+        raise FileNotFoundError(f"{display_name} {split_name} directory is empty: {root}")
+
+
+def build_datasetfolder_pair(train_root, test_root, dataset_name, attack_name=None):
+    trainset = DatasetFolder(
+        root=str(train_root),
+        loader=load_image_bgr,
+        extensions=IMAGE_EXTENSIONS,
+        transform=make_dataset_transforms(dataset_name, attack_name=attack_name, train=True),
+        target_transform=None,
+        is_valid_file=None,
+    )
+    testset = DatasetFolder(
+        root=str(test_root),
+        loader=load_image_bgr,
+        extensions=IMAGE_EXTENSIONS,
+        transform=make_dataset_transforms(dataset_name, attack_name=attack_name, train=False),
+        target_transform=None,
+        is_valid_file=None,
+    )
+    return trainset, testset
+
+
 def load_gtsrb_datasets(data_root, attack_name=None):
+    spec = get_dataset_spec("gtsrb")
     data_root = to_path(data_root)
-    train_root = data_root / "GTSRB" / "train"
-    test_root = data_root / "GTSRB" / "testset"
-    if not train_root.exists():
-        raise FileNotFoundError(f"GTSRB train directory not found: {train_root}")
-    if not test_root.exists():
-        raise FileNotFoundError(f"GTSRB test directory not found: {test_root}")
-    if not any(train_root.iterdir()):
-        raise FileNotFoundError(f"GTSRB train directory is empty: {train_root}")
+    train_root = data_root / spec["train_subdir"]
+    test_root = data_root / spec["test_subdir"]
+    ensure_datasetfolder_root(train_root, spec["display_name"], "train")
+    ensure_datasetfolder_root(test_root, spec["display_name"], "test")
 
     test_has_class_dirs = any(path.is_dir() for path in test_root.iterdir())
     test_csv = test_root / "GT-final_test.csv"
@@ -153,23 +246,26 @@ def load_gtsrb_datasets(data_root, attack_name=None):
             f"Run `python scripts/prepare_gtsrb_testset.py --data-root {data_root}` first."
         )
 
-    trainset = DatasetFolder(
-        root=str(train_root),
-        loader=load_image_bgr,
-        extensions=IMAGE_EXTENSIONS,
-        transform=make_gtsrb_transforms(attack_name, train=True),
-        target_transform=None,
-        is_valid_file=None,
-    )
-    testset = DatasetFolder(
-        root=str(test_root),
-        loader=load_image_bgr,
-        extensions=IMAGE_EXTENSIONS,
-        transform=make_gtsrb_transforms(attack_name, train=False),
-        target_transform=None,
-        is_valid_file=None,
-    )
-    return trainset, testset
+    return build_datasetfolder_pair(train_root, test_root, "gtsrb", attack_name=attack_name)
+
+
+def load_cub200_datasets(data_root, attack_name=None):
+    spec = get_dataset_spec("cub200")
+    data_root = to_path(data_root)
+    train_root = data_root / spec["train_subdir"]
+    test_root = data_root / spec["test_subdir"]
+    ensure_datasetfolder_root(train_root, spec["display_name"], "train")
+    ensure_datasetfolder_root(test_root, spec["display_name"], "test")
+    return build_datasetfolder_pair(train_root, test_root, "cub200", attack_name=attack_name)
+
+
+def load_datasets(dataset_name, data_root, attack_name=None, **kwargs):
+    normalized = str(dataset_name).strip().lower()
+    if normalized == "gtsrb":
+        return load_gtsrb_datasets(data_root, attack_name=attack_name)
+    if normalized == "cub200":
+        return load_cub200_datasets(data_root, attack_name=attack_name)
+    raise ValueError(f"Unsupported dataset: {dataset_name}")
 
 
 def prepare_gtsrb_testset(data_root, copy_mode="copy"):
@@ -209,15 +305,16 @@ def prepare_gtsrb_testset(data_root, copy_mode="copy"):
     return prepared
 
 
-def build_badnets_pattern(trigger_size=3, alpha=1.0):
-    pattern = torch.zeros((IMAGE_SIZE, IMAGE_SIZE), dtype=torch.uint8)
+def build_badnets_pattern(image_size=None, trigger_size=3, alpha=1.0):
+    size = image_size or get_dataset_spec("gtsrb")["image_size"]
+    pattern = torch.zeros((size, size), dtype=torch.uint8)
     pattern[-trigger_size:, -trigger_size:] = 255
-    weight = torch.zeros((IMAGE_SIZE, IMAGE_SIZE), dtype=torch.float32)
+    weight = torch.zeros((size, size), dtype=torch.float32)
     weight[-trigger_size:, -trigger_size:] = alpha
     return pattern, weight
 
 
-def gen_wanet_grid(height=IMAGE_SIZE, k=4):
+def gen_wanet_grid(height, k=4):
     ins = torch.rand(1, 2, k, k) * 2 - 1
     ins = ins / torch.mean(torch.abs(ins))
     noise_grid = nn.functional.interpolate(ins, size=height, mode="bicubic", align_corners=True)
@@ -228,18 +325,25 @@ def gen_wanet_grid(height=IMAGE_SIZE, k=4):
     return identity_grid, noise_grid
 
 
-def get_wanet_grid_paths(experiment_root, k=4):
+def get_wanet_grid_paths(experiment_root, dataset_name="gtsrb", image_size=None, k=4):
+    dataset_name = str(dataset_name).strip().lower()
+    image_size = image_size or get_dataset_spec(dataset_name)["image_size"]
     base = to_path(experiment_root) / "attacks" / "WaNet" / "grids"
-    return base / f"gtsrb_identity_grid_k{k}.pth", base / f"gtsrb_noise_grid_k{k}.pth"
+    return (
+        base / f"{dataset_name}_identity_grid_s{image_size}_k{k}.pth",
+        base / f"{dataset_name}_noise_grid_s{image_size}_k{k}.pth",
+    )
 
 
-def ensure_wanet_grids(experiment_root, k=4):
-    identity_path, noise_path = get_wanet_grid_paths(experiment_root, k=k)
+def ensure_wanet_grids(experiment_root, dataset_name="gtsrb", image_size=None, k=4):
+    spec = get_dataset_spec(dataset_name)
+    size = image_size or spec["image_size"]
+    identity_path, noise_path = get_wanet_grid_paths(experiment_root, dataset_name=dataset_name, image_size=size, k=k)
     identity_path.parent.mkdir(parents=True, exist_ok=True)
     if identity_path.exists() and noise_path.exists():
         return torch.load(identity_path), torch.load(noise_path), identity_path, noise_path
 
-    identity_grid, noise_grid = gen_wanet_grid(k=k)
+    identity_grid, noise_grid = gen_wanet_grid(height=size, k=k)
     torch.save(identity_grid, identity_path)
     torch.save(noise_grid, noise_path)
     return identity_grid, noise_grid, identity_path, noise_path
@@ -300,14 +404,29 @@ def attack_config(attack_name, args=None):
     return config
 
 
-def build_attack(attack_name, trainset, testset, experiment_root, reflection_dir=None, model=None, seed=GLOBAL_SEED, args=None):
+def build_attack(
+    attack_name,
+    trainset,
+    testset,
+    experiment_root,
+    dataset_name="gtsrb",
+    reflection_dir=None,
+    model=None,
+    seed=GLOBAL_SEED,
+    args=None,
+):
     attack_name = attack_name.lower()
+    spec = get_dataset_spec(dataset_name)
     config = attack_config(attack_name, args=args)
-    model = model if model is not None else build_resnet18()
+    model = model if model is not None else build_resnet18(spec["num_classes"])
     loss = nn.CrossEntropyLoss()
 
     if attack_name == "badnets":
-        pattern, weight = build_badnets_pattern(trigger_size=config.get("trigger_size", 3), alpha=1.0)
+        pattern, weight = build_badnets_pattern(
+            image_size=spec["image_size"],
+            trigger_size=config.get("trigger_size", 3),
+            alpha=1.0,
+        )
         return core.BadNets(
             train_dataset=trainset,
             test_dataset=testset,
@@ -325,6 +444,7 @@ def build_attack(attack_name, trainset, testset, experiment_root, reflection_dir
 
     if attack_name == "blended":
         pattern, weight = build_badnets_pattern(
+            image_size=spec["image_size"],
             trigger_size=config.get("trigger_size", 3),
             alpha=config.get("blended_alpha", 0.2),
         )
@@ -344,7 +464,12 @@ def build_attack(attack_name, trainset, testset, experiment_root, reflection_dir
         )
 
     if attack_name == "wanet":
-        identity_grid, noise_grid, _, _ = ensure_wanet_grids(experiment_root, k=config.get("grid_k", 4))
+        identity_grid, noise_grid, _, _ = ensure_wanet_grids(
+            experiment_root,
+            dataset_name=dataset_name,
+            image_size=spec["image_size"],
+            k=config.get("grid_k", 4),
+        )
         return core.WaNet(
             train_dataset=trainset,
             test_dataset=testset,
@@ -386,11 +511,11 @@ def attack_output_root(experiment_root, attack_name):
     return to_path(experiment_root) / "attacks" / ATTACK_CANONICAL[attack_name]
 
 
-def benign_output_root(experiment_root):
+def benign_output_root(experiment_root, dataset_name="gtsrb"):
     return to_path(experiment_root) / "benign"
 
 
-def refine_output_root(experiment_root, attack_name, stage):
+def refine_output_root(experiment_root, attack_name, stage, dataset_name="gtsrb"):
     return to_path(experiment_root) / "refine" / ATTACK_CANONICAL[attack_name] / stage
 
 
@@ -490,10 +615,11 @@ def default_attack_schedule(args, benign_training, attack_name, save_dir, experi
     return schedule
 
 
-def default_refine_schedule(args, attack_name, save_dir):
+def default_refine_schedule(args, attack_name, save_dir, dataset_name="gtsrb"):
     attack_name = attack_name.lower()
     config = attack_config(attack_name, args=args)
-    experiment_name = f"gtsrb_refine_{attack_name}_train_{poisoned_rate_tag(config['poisoned_rate'])}"
+    prefix = dataset_experiment_prefix(dataset_name)
+    experiment_name = f"{prefix}_refine_{attack_name}_train_{poisoned_rate_tag(config['poisoned_rate'])}"
     defaults = {
         "device": args.device,
         "CUDA_VISIBLE_DEVICES": args.gpu_id,
@@ -541,20 +667,21 @@ def load_model_checkpoint(model, checkpoint_path):
     return model
 
 
-def build_refine_defense(model, checkpoint_path=None, arr_path=None, seed=GLOBAL_SEED):
+def build_refine_defense(model, num_classes, checkpoint_path=None, arr_path=None, seed=GLOBAL_SEED):
     return core.REFINE(
         unet=core.models.UNetLittle(args=None, n_channels=3, n_classes=3, first_channels=64),
         model=model,
         pretrain=str(checkpoint_path) if checkpoint_path else None,
         arr_path=str(arr_path) if arr_path else None,
-        num_classes=NUM_CLASSES,
+        num_classes=num_classes,
         seed=seed,
         deterministic=True,
     )
 
 
-def infer_attack_checkpoint(experiment_root, attack_name, poisoned_rate=None):
-    base_prefix = f"gtsrb_{attack_name}"
+def infer_attack_checkpoint(experiment_root, attack_name, poisoned_rate=None, dataset_name="gtsrb"):
+    prefix_dataset = dataset_experiment_prefix(dataset_name)
+    base_prefix = f"{prefix_dataset}_{attack_name}"
     prefix = base_prefix
     if poisoned_rate is not None:
         prefix = f"{prefix}_{poisoned_rate_tag(poisoned_rate)}"
@@ -569,8 +696,9 @@ def infer_attack_checkpoint(experiment_root, attack_name, poisoned_rate=None):
     return path
 
 
-def infer_refine_artifacts(experiment_root, attack_name, poisoned_rate=None):
-    prefix = f"gtsrb_refine_{attack_name}_train"
+def infer_refine_artifacts(experiment_root, attack_name, poisoned_rate=None, dataset_name="gtsrb"):
+    prefix_dataset = dataset_experiment_prefix(dataset_name)
+    prefix = f"{prefix_dataset}_refine_{attack_name}_train"
     if poisoned_rate is not None:
         prefix = f"{prefix}_{poisoned_rate_tag(poisoned_rate)}"
     exp_dir = latest_timestamped_dir(refine_output_root(experiment_root, attack_name, "train"), prefix)
