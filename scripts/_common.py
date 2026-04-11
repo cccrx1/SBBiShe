@@ -334,6 +334,21 @@ def build_badnets_pattern(image_size=None, trigger_size=3, alpha=1.0):
     return pattern, weight
 
 
+def poisoned_transform_indices(dataset_name, attack_name):
+    dataset_name = str(dataset_name).strip().lower()
+    attack_name = str(attack_name).strip().lower()
+
+    if attack_name in {"badnets", "blended"}:
+        if dataset_name == "cub200":
+            return 4, 3
+        return 2, 2
+
+    if attack_name == "refool":
+        return 0, 0
+
+    raise ValueError(f"Unsupported poisoned transform index for attack: {attack_name}")
+
+
 def gen_wanet_grid(height, k=4):
     ins = torch.rand(1, 2, k, k) * 2 - 1
     ins = ins / torch.mean(torch.abs(ins))
@@ -447,6 +462,7 @@ def build_attack(
             trigger_size=config.get("trigger_size", 3),
             alpha=1.0,
         )
+        poisoned_train_index, poisoned_test_index = poisoned_transform_indices(dataset_name, attack_name)
         return core.BadNets(
             train_dataset=trainset,
             test_dataset=testset,
@@ -456,8 +472,8 @@ def build_attack(
             poisoned_rate=config["poisoned_rate"],
             pattern=pattern,
             weight=weight,
-            poisoned_transform_train_index=2,
-            poisoned_transform_test_index=2,
+            poisoned_transform_train_index=poisoned_train_index,
+            poisoned_transform_test_index=poisoned_test_index,
             seed=seed,
             deterministic=True,
         )
@@ -468,6 +484,7 @@ def build_attack(
             trigger_size=config.get("trigger_size", 3),
             alpha=config.get("blended_alpha", 0.2),
         )
+        poisoned_train_index, poisoned_test_index = poisoned_transform_indices(dataset_name, attack_name)
         return core.Blended(
             train_dataset=trainset,
             test_dataset=testset,
@@ -477,8 +494,8 @@ def build_attack(
             poisoned_rate=config["poisoned_rate"],
             pattern=pattern,
             weight=weight,
-            poisoned_transform_train_index=2,
-            poisoned_transform_test_index=2,
+            poisoned_transform_train_index=poisoned_train_index,
+            poisoned_transform_test_index=poisoned_test_index,
             seed=seed,
             deterministic=True,
         )
@@ -614,9 +631,9 @@ def default_attack_schedule(args, benign_training, attack_name, save_dir, experi
         schedule["poisoned_rate"] = config["poisoned_rate"]
 
     if attack_name in {"badnets", "blended"}:
-        defaults = {"lr": 0.01, "momentum": 0.9, "weight_decay": 5e-4, "gamma": 0.1, "schedule": [20], "epochs": 30}
+        defaults = {"lr": 0.01, "momentum": 0.9, "weight_decay": 5e-4, "gamma": 0.1, "schedule": [20, 60], "epochs": 100}
     elif attack_name == "wanet":
-        defaults = {"lr": 0.1, "momentum": 0.9, "weight_decay": 5e-4, "gamma": 0.1, "schedule": [150, 180], "epochs": 200}
+        defaults = {"lr": 0.1, "momentum": 0.9, "weight_decay": 5e-4, "gamma": 0.1, "schedule": [50, 75], "epochs": 100}
     elif attack_name == "refool":
         defaults = {"lr": 0.1, "momentum": 0.9, "weight_decay": 5e-4, "gamma": 0.1, "schedule": [50, 75], "epochs": 100}
     else:
