@@ -5,6 +5,26 @@ import os
 import sys
 from pathlib import Path
 
+def _sanitize_thread_env():
+    omp_threads = os.environ.get("OMP_NUM_THREADS")
+    if omp_threads is not None:
+        try:
+            if int(omp_threads) <= 0:
+                raise ValueError
+        except ValueError:
+            os.environ["OMP_NUM_THREADS"] = "1"
+
+    mkl_threads = os.environ.get("MKL_NUM_THREADS")
+    if mkl_threads is not None:
+        try:
+            if int(mkl_threads) <= 0:
+                raise ValueError
+        except ValueError:
+            os.environ["MKL_NUM_THREADS"] = "1"
+
+
+_sanitize_thread_env()
+
 import cv2
 import torch
 import torch.nn as nn
@@ -587,9 +607,11 @@ def default_attack_schedule(args, benign_training, attack_name, save_dir, experi
         "save_epoch_interval": args.save_interval,
         "save_dir": str(save_dir),
         "experiment_name": experiment_name_with_rate,
-        "y_target": config["y_target"],
-        "poisoned_rate": config["poisoned_rate"],
     }
+
+    if not benign_training:
+        schedule["y_target"] = config["y_target"]
+        schedule["poisoned_rate"] = config["poisoned_rate"]
 
     if attack_name in {"badnets", "blended"}:
         defaults = {"lr": 0.01, "momentum": 0.9, "weight_decay": 5e-4, "gamma": 0.1, "schedule": [20], "epochs": 30}

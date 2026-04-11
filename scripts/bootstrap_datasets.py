@@ -1,6 +1,7 @@
 import argparse
 import shutil
 import tarfile
+import urllib.error
 import urllib.request
 import zipfile
 from pathlib import Path
@@ -20,7 +21,17 @@ GTSRB_URLS = {
     "test_images": "https://benchmark.ini.rub.de/Dataset/GTSRB_Final_Test_Images.zip",
     "test_gt": "https://benchmark.ini.rub.de/Dataset/GTSRB_Final_Test_GT.zip",
 }
-CUB_DEFAULT_URL = "http://www.vision.caltech.edu/visipedia-data/CUB-200-2011/CUB_200_2011.tgz"
+CUB_DEFAULT_URLS = (
+    "https://data.caltech.edu/records/65de6-vp158/files/CUB_200_2011.tgz?download=1",
+    "http://www.vision.caltech.edu/visipedia-data/CUB-200-2011/CUB_200_2011.tgz",
+)
+
+DEFAULT_DOWNLOAD_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+    )
+}
 
 
 def ensure_dir(path: Path) -> None:
@@ -33,7 +44,19 @@ def download_file(url: str, dst: Path) -> None:
         return
     ensure_dir(dst.parent)
     print(f"[download] {url} -> {dst}")
-    urllib.request.urlretrieve(url, dst)
+    temp_dst = dst.with_name(f"{dst.name}.part")
+    if temp_dst.exists():
+        temp_dst.unlink()
+
+    request = urllib.request.Request(url, headers=DEFAULT_DOWNLOAD_HEADERS)
+    try:
+        with urllib.request.urlopen(request) as response, temp_dst.open("wb") as f:
+            shutil.copyfileobj(response, f)
+        temp_dst.replace(dst)
+    except Exception:
+        if temp_dst.exists():
+            temp_dst.unlink()
+        raise
 
 
 def extract_archive(archive_path: Path, extract_to: Path) -> None:
@@ -51,6 +74,15 @@ def extract_archive(archive_path: Path, extract_to: Path) -> None:
         return
 
     raise ValueError(f"Unsupported archive format: {archive_path}")
+
+
+def is_valid_tar_archive(archive_path: Path) -> bool:
+    try:
+        with tarfile.open(archive_path, "r:*") as tf:
+            tf.getmembers()
+        return True
+    except tarfile.TarError:
+        return False
 
 
 def copy_tree_if_needed(src: Path, dst: Path) -> int:
@@ -130,7 +162,25 @@ def resolve_cub_raw_root(source: str, cache_root: Path) -> Path:
     archives_root = cache_root / "cub200"
     ensure_dir(archives_root)
     archive_path = archives_root / "CUB_200_2011.tgz"
-    download_file(source, archive_path)
+
+    if archive_path.exists() and not is_valid_tar_archive(archive_path):
+        print(f"[warn] removing invalid cached archive: {archive_path}")
+        archive_path.unlink()
+
+    download_sources = [source]
+    if source == CUB_DEFAULT_URLS[0]:
+        download_sources.extend(url for url in CUB_DEFAULT_URLS[1:] if url not in download_sources)
+
+    last_error = None
+    for download_source in download_sources:
+        try:
+            download_file(download_source, archive_path)
+            break
+        except (urllib.error.URLError, urllib.error.HTTPError, OSError) as exc:
+            last_error = exc
+            print(f"[warn] download failed, will try next source if available: {download_source} ({exc})")
+    else:
+        raise RuntimeError(f"Failed to download CUB-200-2011 from all sources: {download_sources}") from last_error
 
     extract_root = archives_root / "extracted"
     ensure_dir(extract_root)
@@ -166,7 +216,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--cub-source",
-        default=CUB_DEFAULT_URL,
+        default=CUB_DEFAULT_URLS[0],
         help="CUB source: URL, local archive path, or extracted CUB_200_2011 directory",
     )
     args = parser.parse_args()
