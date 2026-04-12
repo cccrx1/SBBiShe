@@ -87,6 +87,15 @@ def to_path(path_like):
     return Path(path_like).resolve()
 
 
+def normalize_pretrain_spec(spec):
+    if spec is None:
+        return None
+    text = str(spec).strip()
+    if text.lower().startswith("torchvision://"):
+        return text
+    return str(to_path(text))
+
+
 def get_dataset_spec(dataset_name):
     normalized = str(dataset_name).strip().lower()
     if normalized not in DATASET_SPECS:
@@ -664,7 +673,7 @@ def default_attack_schedule(args, benign_training, attack_name, save_dir, experi
     if args.epochs is not None:
         schedule["epochs"] = args.epochs
     if args.pretrain is not None:
-        schedule["pretrain"] = str(to_path(args.pretrain))
+        schedule["pretrain"] = normalize_pretrain_spec(args.pretrain)
     schedule["schedule"] = resolve_schedule(defaults["schedule"], args)
     return schedule
 
@@ -712,7 +721,7 @@ def default_refine_schedule(args, attack_name, save_dir, dataset_name="gtsrb"):
     if args.amsgrad:
         schedule["amsgrad"] = True
     if args.pretrain is not None:
-        schedule["pretrain"] = str(to_path(args.pretrain))
+        schedule["pretrain"] = normalize_pretrain_spec(args.pretrain)
     schedule["schedule"] = resolve_schedule(defaults["schedule"], args)
     return schedule
 
