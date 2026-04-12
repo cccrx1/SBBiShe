@@ -235,7 +235,7 @@ class Base(object):
                 iteration += 1
 
                 if iteration % self.current_schedule['log_iteration_interval'] == 0:
-                    msg = time.strftime("[%Y-%m-%d_%H:%M:%S] ", time.localtime()) + f"Epoch:{i+1}/{self.current_schedule['epochs']}, iteration:{batch_id + 1}/{len(self.poisoned_train_dataset)//self.current_schedule['batch_size']}, lr: {optimizer.param_groups[0]['lr']}, loss: {float(loss)}, time: {time.time()-last_time}\n"
+                    msg = time.strftime("[%Y-%m-%d_%H:%M:%S] ", time.localtime()) + f"Epoch:{i+1}/{self.current_schedule['epochs']}, iteration:{batch_id + 1}/{len(train_loader)}, lr: {optimizer.param_groups[0]['lr']}, loss: {float(loss)}, time: {time.time()-last_time}\n"
                     last_time = time.time()
                     log(msg)
 
@@ -251,17 +251,16 @@ class Base(object):
                       f"Top-1 correct / Total: {top1_correct}/{total_num}, Top-1 accuracy: {top1_correct/total_num}, Top-5 correct / Total: {top5_correct}/{total_num}, Top-5 accuracy: {top5_correct/total_num}, mean loss: {mean_loss}, time: {time.time()-last_time}\n"
                 log(msg)
 
-                # test result on poisoned test dataset
-                # if self.current_schedule['benign_training'] is False:
-                predict_digits, labels, mean_loss = self._test(self.poisoned_test_dataset, device, self.current_schedule['batch_size'], self.current_schedule['num_workers'])
-                total_num = labels.size(0)
-                prec1, prec5 = accuracy(predict_digits, labels, topk=(1, 5))
-                top1_correct = int(round(prec1.item() / 100.0 * total_num))
-                top5_correct = int(round(prec5.item() / 100.0 * total_num))
-                msg = "==========Test result on poisoned test dataset==========\n" + \
-                      time.strftime("[%Y-%m-%d_%H:%M:%S] ", time.localtime()) + \
-                      f"Top-1 correct / Total: {top1_correct}/{total_num}, Top-1 accuracy: {top1_correct/total_num}, Top-5 correct / Total: {top5_correct}/{total_num}, Top-5 accuracy: {top5_correct/total_num}, mean loss: {mean_loss}, time: {time.time()-last_time}\n"
-                log(msg)
+                    if self.current_schedule['benign_training'] is False:
+                      predict_digits, labels, mean_loss = self._test(self.poisoned_test_dataset, device, self.current_schedule['batch_size'], self.current_schedule['num_workers'])
+                      total_num = labels.size(0)
+                      prec1, prec5 = accuracy(predict_digits, labels, topk=(1, 5))
+                      top1_correct = int(round(prec1.item() / 100.0 * total_num))
+                      top5_correct = int(round(prec5.item() / 100.0 * total_num))
+                      msg = "==========Test result on poisoned test dataset==========\n" + \
+                          time.strftime("[%Y-%m-%d_%H:%M:%S] ", time.localtime()) + \
+                          f"Top-1 correct / Total: {top1_correct}/{total_num}, Top-1 accuracy: {top1_correct/total_num}, Top-5 correct / Total: {top5_correct}/{total_num}, Top-5 accuracy: {top5_correct/total_num}, mean loss: {mean_loss}, time: {time.time()-last_time}\n"
+                      log(msg)
 
                 self.model.train()
 

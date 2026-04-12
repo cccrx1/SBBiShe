@@ -121,6 +121,7 @@ def parse_basic_args(description):
     parser.add_argument("--save-interval", type=int, default=10)
     parser.add_argument("--test-interval", type=int, default=10)
     parser.add_argument("--log-interval", type=int, default=100)
+    parser.add_argument("--pretrain", default=None, help="Optional pretrained checkpoint path for model warm start.")
     return parser
 
 
@@ -207,8 +208,7 @@ def make_cub200_transforms(attack_name=None, train=True, image_size=None):
         items.append(transforms.CenterCrop((image_size, image_size)))
 
     items.append(transforms.ToTensor())
-    if attack_name == "refool":
-        items.append(transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)))
+    items.append(transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)))
     return transforms.Compose(items)
 
 
@@ -342,6 +342,11 @@ def poisoned_transform_indices(dataset_name, attack_name):
         if dataset_name == "cub200":
             return 4, 3
         return 2, 2
+
+    if attack_name == "wanet":
+        if dataset_name == "cub200":
+            return 4, 3
+        return 0, 0
 
     if attack_name == "refool":
         return 0, 0
@@ -507,6 +512,7 @@ def build_attack(
             image_size=spec["image_size"],
             k=config.get("grid_k", 4),
         )
+        poisoned_train_index, poisoned_test_index = poisoned_transform_indices(dataset_name, attack_name)
         return core.WaNet(
             train_dataset=trainset,
             test_dataset=testset,
@@ -517,6 +523,8 @@ def build_attack(
             identity_grid=identity_grid,
             noise_grid=noise_grid,
             noise=config["noise"],
+            poisoned_transform_train_index=poisoned_train_index,
+            poisoned_transform_test_index=poisoned_test_index,
             seed=seed,
             deterministic=True,
         )
@@ -608,6 +616,7 @@ def poisoned_rate_tag(poisoned_rate):
 
 def default_attack_schedule(args, benign_training, attack_name, save_dir, experiment_name):
     attack_name = attack_name.lower()
+    dataset_name = str(getattr(args, "dataset", "gtsrb")).strip().lower()
     config = attack_config(attack_name, args=args)
     experiment_name_with_rate = experiment_name
     if not benign_training:
@@ -633,9 +642,9 @@ def default_attack_schedule(args, benign_training, attack_name, save_dir, experi
     if attack_name in {"badnets", "blended"}:
         defaults = {"lr": 0.01, "momentum": 0.9, "weight_decay": 5e-4, "gamma": 0.1, "schedule": [20, 60], "epochs": 100}
     elif attack_name == "wanet":
-        defaults = {"lr": 0.1, "momentum": 0.9, "weight_decay": 5e-4, "gamma": 0.1, "schedule": [50, 75], "epochs": 100}
+        defaults = {"lr": 0.01 if dataset_name == "cub200" else 0.1, "momentum": 0.9, "weight_decay": 5e-4, "gamma": 0.1, "schedule": [50, 75], "epochs": 100}
     elif attack_name == "refool":
-        defaults = {"lr": 0.1, "momentum": 0.9, "weight_decay": 5e-4, "gamma": 0.1, "schedule": [50, 75], "epochs": 100}
+        defaults = {"lr": 0.01 if dataset_name == "cub200" else 0.1, "momentum": 0.9, "weight_decay": 5e-4, "gamma": 0.1, "schedule": [50, 75], "epochs": 100}
     else:
         raise ValueError(f"Unsupported attack schedule for: {attack_name}")
 
@@ -650,6 +659,8 @@ def default_attack_schedule(args, benign_training, attack_name, save_dir, experi
         schedule["gamma"] = args.gamma
     if args.epochs is not None:
         schedule["epochs"] = args.epochs
+    if args.pretrain is not None:
+        schedule["pretrain"] = str(to_path(args.pretrain))
     schedule["schedule"] = resolve_schedule(defaults["schedule"], args)
     return schedule
 
@@ -696,6 +707,8 @@ def default_refine_schedule(args, attack_name, save_dir, dataset_name="gtsrb"):
         schedule["eps"] = args.eps
     if args.amsgrad:
         schedule["amsgrad"] = True
+    if args.pretrain is not None:
+        schedule["pretrain"] = str(to_path(args.pretrain))
     schedule["schedule"] = resolve_schedule(defaults["schedule"], args)
     return schedule
 

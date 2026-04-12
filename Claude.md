@@ -20,7 +20,7 @@
 3. 针对每种攻击训练 REFINE
 4. 评估 BA 和 ASR_NoTarget
 
-当前代码已完成 CUB-200 第一阶段接入（单域分类模式），但若后续任务与主线冲突，优先确认是否属于“论文主线实验”还是“单独消融/临时调试”。
+当前统一入口已支持 GTSRB（论文主线）与 CUB-200 单域分类实验，但若后续任务与主线冲突，优先确认是否属于“论文主线实验”还是“单独消融/临时调试”。
 
 ## 2. 仓库结构速览
 
@@ -32,7 +32,7 @@ SBBiShe/
 |   |-- models/       # ResNet18 / UNetLittle
 |   `-- utils/        # 日志、精度、测试等工具
 |-- scripts/          # 真实实验入口脚本
-|-- datasets/         # GTSRB 与 Refool 反射图
+|-- datasets/         # GTSRB / CUB200 / Refool 反射图
 |-- experiments/      # 训练产物与评估结果
 |-- Claude.md
 |-- 项目索引文档.md
@@ -114,7 +114,7 @@ SBBiShe/
 - `core/attacks/base.py`：攻击统一基类
 - `core/defenses/base.py`：防御统一基类
 - `core/defenses/REFINE.py`：REFINE 主实现
-- `core/models/resnet.py`：GTSRB 主分类器 ResNet18
+- `core/models/resnet.py`：当前分类器入口，供 GTSRB / CUB-200 分类实验复用
 - `core/models/unet.py`：REFINE 使用的 `UNetLittle`
 
 ## 5. 数据与前置条件
@@ -157,7 +157,21 @@ Refool 需要单独的反射图目录：
 
 如果目录不存在、没有图像或图像无法读取，`scripts/_common.py` 中的 `load_reflection_images()` 会直接报错。
 
-### 5.3 AI 协作前的默认检查清单
+### 5.3 CUB-200 的 transform 顺序与攻击插入位
+
+`scripts/_common.py` 中 `make_cub200_transforms()` 当前定义的 CUB 预处理链路为：
+
+- train：`ToPILImage -> Resize(147,147) -> RandomCrop(128,128) -> RandomHorizontalFlip -> ToTensor -> Normalize`
+- test：`ToPILImage -> Resize(147,147) -> CenterCrop(128,128) -> ToTensor -> Normalize`
+
+因此在 CUB-200 上：
+
+- `BadNets / Blended / WaNet` 这类通过 DatasetFolder transform list 注入 trigger 或 warp 的攻击，必须把插入位放在 crop/flip 之后、`ToTensor/Normalize` 之前；当前统一逻辑为 `train=4`、`test=3`
+- `Refool` 保持 `poisoned_transform_*_index=0` 是有意设计；其实现会先按 index 切分 pre/post transform，再在中间加入 reflection，不应按普通 trigger 攻击理解
+
+如果后续改动 `make_cub200_transforms()`，必须同步复核 `_common.py` 中的 `poisoned_transform_indices()`，否则容易重新引入尺寸或顺序错位问题。
+
+### 5.4 AI 协作前的默认检查清单
 
 在跑训练、评估或修改脚本前，默认先确认：
 
@@ -383,6 +397,7 @@ python scripts/collect_final_results.py --experiment-root experiments --latest-o
 
 - WaNet 依赖 `identity_grid` 和 `noise_grid`，相关文件会保留在结果目录中
 - Refool 对反射图内容较敏感，跨机器复现时需确认目录内容一致
+- CUB-200 若出现触发器或 warp 尺寸异常，优先检查 `make_cub200_transforms()` 与 `poisoned_transform_indices()` 是否仍保持同步
 
 ## 12. 推荐阅读顺序
 
