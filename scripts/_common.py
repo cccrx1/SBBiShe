@@ -121,7 +121,11 @@ def parse_basic_args(description):
     parser.add_argument("--save-interval", type=int, default=10)
     parser.add_argument("--test-interval", type=int, default=10)
     parser.add_argument("--log-interval", type=int, default=100)
-    parser.add_argument("--pretrain", default=None, help="Optional pretrained checkpoint path for model warm start.")
+    parser.add_argument(
+        "--pretrain",
+        default=None,
+        help="Optional warm-start source: local checkpoint path or torchvision URI (e.g., torchvision://resnet18).",
+    )
     return parser
 
 

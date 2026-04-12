@@ -115,6 +115,92 @@ class Base(object):
         for param_group in optimizer.param_groups:
             param_group['lr'] = lr
 
+    def _resolve_pretrain_state_dict(self, pretrain_spec):
+        if isinstance(pretrain_spec, str) and pretrain_spec.startswith('torchvision://'):
+            tag = pretrain_spec.split('://', 1)[1].strip().lower()
+            if tag in ('resnet18', 'resnet18-default', 'resnet18-imagenet1k-v1'):
+                from torchvision import models as tv_models
+
+                weights = tv_models.ResNet18_Weights.DEFAULT
+                tv_model = tv_models.resnet18(weights=weights)
+                return tv_model.state_dict(), f'torchvision://{tag}'
+
+            raise ValueError(
+                f'Unsupported torchvision pretrain tag: {pretrain_spec}. '
+                'Currently supported: torchvision://resnet18'
+            )
+
+        if not osp.exists(str(pretrain_spec)):
+            raise FileNotFoundError(f'Pretrain checkpoint not found: {pretrain_spec}')
+
+        payload = torch.load(pretrain_spec, map_location='cpu')
+        if isinstance(payload, dict):
+            for key in ('state_dict', 'model_state_dict', 'model'):
+                if key in payload and isinstance(payload[key], dict):
+                    payload = payload[key]
+                    break
+        return payload, str(pretrain_spec)
+
+    def _normalize_state_dict_keys(self, state_dict):
+        normalized = {}
+        for key, value in state_dict.items():
+            if not isinstance(value, torch.Tensor):
+                continue
+
+            norm_key = key
+            if norm_key.startswith('module.'):
+                norm_key = norm_key[len('module.'):]
+            if norm_key.startswith('model.'):
+                norm_key = norm_key[len('model.'):]
+            normalized[norm_key] = value
+        return normalized
+
+    def _load_pretrain_robust(self, pretrain_spec, log):
+        raw_state_dict, source = self._resolve_pretrain_state_dict(pretrain_spec)
+        state_dict = self._normalize_state_dict_keys(raw_state_dict)
+
+        model_state = self.model.state_dict()
+        loadable = {}
+        loaded_count = 0
+        adapted_count = 0
+        skipped_shape = 0
+        skipped_missing = 0
+
+        for key, value in state_dict.items():
+            if key not in model_state:
+                skipped_missing += 1
+                continue
+
+            target_value = model_state[key]
+            if value.shape == target_value.shape:
+                loadable[key] = value
+                loaded_count += 1
+                continue
+
+            if (
+                key == 'conv1.weight'
+                and value.ndim == 4
+                and target_value.ndim == 4
+                and value.shape[:2] == target_value.shape[:2]
+                and value.shape[2:] == (7, 7)
+                and target_value.shape[2:] == (3, 3)
+            ):
+                loadable[key] = value[:, :, 2:5, 2:5].contiguous()
+                loaded_count += 1
+                adapted_count += 1
+                continue
+
+            skipped_shape += 1
+
+        model_state.update(loadable)
+        self.model.load_state_dict(model_state, strict=False)
+
+        log(
+            f'Load pretrained parameters: {source} '\
+            f'(loaded={loaded_count}, adapted={adapted_count}, '\
+            f'skipped_shape={skipped_shape}, skipped_missing={skipped_missing})\n'
+        )
+
     def train(self, schedule=None):
         if schedule is None and self.global_schedule is None:
             raise AttributeError("Training schedule is None, please check your schedule setting.")
@@ -143,8 +229,7 @@ class Base(object):
             log(f"y_target={self.current_schedule['y_target']}\n")
 
         if 'pretrain' in self.current_schedule:
-            self.model.load_state_dict(torch.load(self.current_schedule['pretrain'], map_location='cpu'), strict=False)
-            log(f"Load pretrained parameters: {self.current_schedule['pretrain']}\n")
+            self._load_pretrain_robust(self.current_schedule['pretrain'], log)
 
         # Use GPU
         if 'device' in self.current_schedule and self.current_schedule['device'] == 'GPU':
