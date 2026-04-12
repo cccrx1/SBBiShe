@@ -116,19 +116,30 @@ class Base(object):
             param_group['lr'] = lr
 
     def _resolve_pretrain_state_dict(self, pretrain_spec):
-        if isinstance(pretrain_spec, str) and pretrain_spec.startswith('torchvision://'):
-            tag = pretrain_spec.split('://', 1)[1].strip().lower()
-            if tag in ('resnet18', 'resnet18-default', 'resnet18-imagenet1k-v1'):
-                from torchvision import models as tv_models
+        if isinstance(pretrain_spec, str):
+            raw = str(pretrain_spec).strip()
+            norm = raw.replace('\\', '/')
+            lower = norm.lower()
 
-                weights = tv_models.ResNet18_Weights.DEFAULT
-                tv_model = tv_models.resnet18(weights=weights)
-                return tv_model.state_dict(), f'torchvision://{tag}'
+            tag = None
+            for marker in ('torchvision://', 'torchvision:/', 'torchvision:'):
+                idx = lower.find(marker)
+                if idx != -1:
+                    tag = norm[idx + len(marker):].strip('/').lower()
+                    break
 
-            raise ValueError(
-                f'Unsupported torchvision pretrain tag: {pretrain_spec}. '
-                'Currently supported: torchvision://resnet18'
-            )
+            if tag is not None:
+                if tag in ('resnet18', 'resnet18-default', 'resnet18-imagenet1k-v1'):
+                    from torchvision import models as tv_models
+
+                    weights = tv_models.ResNet18_Weights.DEFAULT
+                    tv_model = tv_models.resnet18(weights=weights)
+                    return tv_model.state_dict(), f'torchvision://{tag}'
+
+                raise ValueError(
+                    f'Unsupported torchvision pretrain tag: {pretrain_spec}. '
+                    'Currently supported: torchvision://resnet18'
+                )
 
         if not osp.exists(str(pretrain_spec)):
             raise FileNotFoundError(f'Pretrain checkpoint not found: {pretrain_spec}')
