@@ -332,6 +332,8 @@ class REFINE(Base):
                 self.unet = self.unet.to(device)
                 self.unet.train()
 
+        return work_dir
+
     def preprocess(self, data):
         """Perform unet defense method on data and return the preprocessed data.
 
