@@ -1,0 +1,323 @@
++-----------------------------------------------AutoDL-----------------------------------------------------+
+目录说明:
+╔═════════════════╦════════╦════╦═════════════════════════════════════════════════════════════════════════╗
+║目录             ║名称    ║速度║说明                                                                     ║
+╠═════════════════╬════════╬════╬═════════════════════════════════════════════════════════════════════════╣
+║/                ║系 统 盘║一般║实例关机数据不会丢失，可存放代码等。会随保存镜像一起保存。               ║
+║/root/autodl-tmp ║数 据 盘║ 快 ║实例关机数据不会丢失，可存放读写IO要求高的数据。但不会随保存镜像一起保存 ║
+╚═════════════════╩════════╩════╩═════════════════════════════════════════════════════════════════════════╝
+CPU ：16 核心
+内存：60 GB
+GPU ：NVIDIA vGPU-32GB, 1
+存储：
+  系 统 盘/               ：67% 20G/30G
+  数 据 盘/root/autodl-tmp：24% 12G/50G
++----------------------------------------------------------------------------------------------------------+
+*注意: 
+1.系统盘较小请将大的数据存放于数据盘或文件存储中，重置系统时数据盘和文件存储中的数据不受影响
+2.清理系统盘请参考：https://www.autodl.com/docs/qa1/
+3.终端中长期执行命令请使用screen等工具开后台运行，确保程序不受SSH连接中断影响：https://www.autodl.com/docs/daemon/
+(base) root@autodl-container-83b647b69c-c6466ed5:~# conda activate gtsrb-refine
+cd /root/SBBiShe
+
+unset OMP_NUM_THREADS
+unset MKL_NUM_THREADS
+export OMP_NUM_THREADS=8
+export MKL_NUM_THREADS=8
+export OPENBLAS_NUM_THREADS=8
+export NUMEXPR_NUM_THREADS=8
+
+export DATA_ROOT=/root/SBBiShe/datasets
+export EXP_ROOT=/root/SBBiShe/experiments
+export GPU_ID=0
+export SEED=666
+export NUM_WORKERS=8
+export BATCH_SIZE=48
+export PR=0.1
+(gtsrb-refine) root@autodl-container-83b647b69c-c6466ed5:~/SBBiShe# BAD_ATK=/root/SBBiShe/experiments/attacks/BadNets/cub200_badnets_pr0p1_2026-04-12_23-16-34/ckpt_epoch_100.pth
+ls -l "$BAD_ATK"
+-rw-r--r-- 1 root root 45165168 Apr 12 23:46 /root/SBBiShe/experiments/attacks/BadNets/cub200_badnets_pr0p1_2026-04-12_23-16-34/ckpt_epoch_100.pth
+(gtsrb-refine) root@autodl-container-83b647b69c-c6466ed5:~/SBBiShe# git pull
+error: RPC failed; curl 16 Error in the HTTP2 framing layer
+fatal: expected flush after ref listing
+(gtsrb-refine) root@autodl-container-83b647b69c-c6466ed5:~/SBBiShe# git pull
+^C
+(gtsrb-refine) root@autodl-container-83b647b69c-c6466ed5:~/SBBiShe# source /etc/network_turbo
+设置成功
+注意：仅限于学术用途和加速访问github/huggingface，不承诺稳定性保证
+(gtsrb-refine) root@autodl-container-83b647b69c-c6466ed5:~/SBBiShe# git pull
+remote: Enumerating objects: 20, done.
+remote: Counting objects: 100% (20/20), done.
+remote: Compressing objects: 100% (4/4), done.
+remote: Total 14 (delta 10), reused 14 (delta 10), pack-reused 0 (from 0)
+Unpacking objects: 100% (14/14), 2.93 KiB | 750.00 KiB/s, done.
+From https://github.com/cccrx1/SBBiShe
+   b3c36e8..7d3787c  main       -> origin/main
+Updating b3c36e8..7d3787c
+Fast-forward
+ core/defenses/REFINE.py                                                 | 151 ++++++---
+ scripts/_common.py                                                      |  14 +-
+ ...260\346\215\256\345\220\214\346\255\245\346\226\207\346\241\243.txt" | 555 ---------------------------------
+ 3 files changed, 119 insertions(+), 601 deletions(-)
+ delete mode 100644 "\346\211\213\345\212\250\346\225\260\346\215\256\345\220\214\346\255\245\346\226\207\346\241\243.txt"
+(gtsrb-refine) root@autodl-container-83b647b69c-c6466ed5:~/SBBiShe# python /root/SBBiShe/scripts/train_refine.py
+--dataset cub200 --attack badnets
+--data-root "$DATA_ROOT"
+--experiment-root "$EXP_ROOT"
+--attack-checkpoint "$BAD_ATK"
+--gpu-id "$GPU_ID"
+--seed "$SEED"
+--poisoned-rate "$PR"
+--batch-size "$BATCH_SIZE"
+--num-workers "$NUM_WORKERS"
+--epochs 30
+--lr 0.001
+--schedule 20 --schedule 25
+--amp
+usage: train_refine.py [-h] [--data-root DATA_ROOT] [--gpu-id GPU_ID] [--device {GPU,CPU}]
+                       [--batch-size BATCH_SIZE] [--num-workers NUM_WORKERS] [--seed SEED]
+                       [--experiment-root EXPERIMENT_ROOT] [--save-interval SAVE_INTERVAL]
+                       [--test-interval TEST_INTERVAL] [--log-interval LOG_INTERVAL] [--pretrain PRETRAIN]
+                       [--dataset {gtsrb,cub200}] [--epochs EPOCHS] [--lr LR] [--gamma GAMMA]
+                       [--schedule SCHEDULE] [--disable-schedule] [--weight-decay WEIGHT_DECAY]
+                       [--betas BETA1 BETA2] [--eps EPS] [--amsgrad] [--amp] [--no-amp] [--y-target Y_TARGET]
+                       [--poisoned-rate POISONED_RATE] [--trigger-size TRIGGER_SIZE]
+                       [--blended-alpha BLENDED_ALPHA] [--wanet-grid-k WANET_GRID_K] [--wanet-noise]
+                       [--no-wanet-noise] [--reflection-dir REFLECTION_DIR]
+                       [--reflection-limit REFLECTION_LIMIT] --attack {badnets,blended,wanet,refool}
+                       [--attack-checkpoint ATTACK_CHECKPOINT]
+train_refine.py: error: the following arguments are required: --attack
+bash: --dataset: command not found
+bash: --data-root: command not found
+bash: --experiment-root: command not found
+bash: --attack-checkpoint: command not found
+bash: --gpu-id: command not found
+bash: --seed: command not found
+bash: --poisoned-rate: command not found
+bash: --batch-size: command not found
+bash: --num-workers: command not found
+bash: --epochs: command not found
+bash: --lr: command not found
+bash: --schedule: command not found
+bash: --amp: command not found
+(gtsrb-refine) root@autodl-container-83b647b69c-c6466ed5:~/SBBiShe# python /root/SBBiShe/scripts/train_refine.py --dataset cub200 --attack badnets --data-root "$DATA_ROOT" --experiment-root "$EXP_ROOT" --attack-checkpoint "$BAD_ATK" --gpu-id "$GPU_ID" --seed "$SEED" --poisoned-rate "$PR" --batch-size "$BATCH_SIZE" --num-workers "$NUM_WORKERS" --epochs 30 --lr 0.001 --schedule 20 --schedule 25 --amp && BAD_REF=$(ls -t /root/SBBiShe/experiments/refine/BadNets/train/cub200_refine_badnets_train_pr0p1_*/ckpt_epoch_*.pth | head -1) && BAD_ARR=$(dirname "$BAD_REF")/label_shuffle.pth && echo "$BAD_REF" && echo "$BAD_ARR" && ls -l "$BAD_REF" "$BAD_ARR" && python /root/SBBiShe/scripts/eval_refine.py --dataset cub200 --attack badnets --data-root "$DATA_ROOT" --experiment-root "$EXP_ROOT" --attack-checkpoint "$BAD_ATK" --refine-checkpoint "$BAD_REF" --arr-path "$BAD_ARR" --poisoned-rate "$PR" --gpu-id "$GPU_ID" --batch-size 64 --seed "$SEED"
+Traceback (most recent call last):
+  File "/root/SBBiShe/scripts/train_refine.py", line 51, in <module>
+    main()
+  File "/root/SBBiShe/scripts/train_refine.py", line 44, in main
+    defense = build_refine_defense(attack_model, num_classes=spec["num_classes"], seed=args.seed)
+  File "/root/SBBiShe/scripts/_common.py", line 746, in build_refine_defense
+    return core.REFINE(
+  File "/root/SBBiShe/core/defenses/REFINE.py", line 66, in __init__
+    self.register_buffer("norm_mean", mean)
+AttributeError: 'REFINE' object has no attribute 'register_buffer'
+(gtsrb-refine) root@autodl-container-83b647b69c-c6466ed5:~/SBBiShe# python /root/SBBiShe/scripts/train_refine.py --dataset cub200 --attack badnets --data-root "$DATA_ROOT" --experiment-root "$EXP_ROOT" --attack-checkpoint "$BAD_ATK" --gpu-id "$GPU_ID" --seed "$SEED" --poisoned-rate "$PR" --batch-size "$BATCH_SIZE" --num-workers "$NUM_WORKERS" --epochs 30 --lr 0.001 --schedule 20 --schedule 25 --amp
+Traceback (most recent call last):
+  File "/root/SBBiShe/scripts/train_refine.py", line 51, in <module>
+    main()
+  File "/root/SBBiShe/scripts/train_refine.py", line 44, in main
+    defense = build_refine_defense(attack_model, num_classes=spec["num_classes"], seed=args.seed)
+  File "/root/SBBiShe/scripts/_common.py", line 746, in build_refine_defense
+    return core.REFINE(
+  File "/root/SBBiShe/core/defenses/REFINE.py", line 66, in __init__
+    self.register_buffer("norm_mean", mean)
+AttributeError: 'REFINE' object has no attribute 'register_buffer'
+(gtsrb-refine) root@autodl-container-83b647b69c-c6466ed5:~/SBBiShe# git pull
+remote: Enumerating objects: 9, done.
+remote: Counting objects: 100% (9/9), done.
+remote: Compressing objects: 100% (2/2), done.
+remote: Total 5 (delta 3), reused 5 (delta 3), pack-reused 0 (from 0)
+Unpacking objects: 100% (5/5), 541 bytes | 541.00 KiB/s, done.
+From https://github.com/cccrx1/SBBiShe
+   7d3787c..d981901  main       -> origin/main
+Updating 7d3787c..d981901
+Fast-forward
+ core/defenses/REFINE.py | 14 ++++++++------
+ 1 file changed, 8 insertions(+), 6 deletions(-)
+(gtsrb-refine) root@autodl-container-83b647b69c-c6466ed5:~/SBBiShe# python - <<'PY'
+from scripts._common import build_resnet18, build_refine_defense, get_dataset_spec
+spec = get_dataset_spec("cub200")
+m = build_resnet18(spec["num_classes"])
+d = build_refine_defense(m, num_classes=spec["num_classes"], seed=666)
+print("REFINE init ok")
+PY
+REFINE init ok
+(gtsrb-refine) root@autodl-container-83b647b69c-c6466ed5:~/SBBiShe# python /root/SBBiShe/scripts/train_refine.py --dataset cub200 --attack badnets --data-root "$DATA_ROOT" --experiment-root "$EXP_ROOT" --attack-checkpoint "$BAD_ATK" --gpu-id "$GPU_ID" --seed "$SEED" --poisoned-rate "$PR" --batch-size "$BATCH_SIZE" --num-workers "$NUM_WORKERS" --epochs 30 --lr 0.001 --schedule 20 --schedule 25 --amp
+This machine has 1 cuda devices, and use 1 of them to train.
+==========Schedule parameters==========
+
+{'device': 'GPU', 'CUDA_VISIBLE_DEVICES': '0', 'GPU_num': 1, 'batch_size': 48, 'num_workers': 8, 'lr': 0.001, 'betas': (0.9, 0.999), 'eps': 1e-08, 'weight_decay': 0, 'amsgrad': False, 'schedule': [20, 25], 'gamma': 0.1, 'epochs': 30, 'log_iteration_interval': 100, 'test_epoch_interval': 10, 'save_epoch_interval': 10, 'save_dir': '/root/SBBiShe/experiments/refine/BadNets/train', 'experiment_name': 'cub200_refine_badnets_train_pr0p1', 'y_target': 1, 'poisoned_rate': 0.1, 'amp': True}
+
+poisoned_rate=0.1
+
+y_target=1
+
+Total train samples: 5994
+Total test samples: 5794
+Batch size: 48
+iteration every epoch: 124
+Initial learning rate: 0.001
+
+Traceback (most recent call last):
+  File "/root/SBBiShe/scripts/train_refine.py", line 51, in <module>
+    main()
+  File "/root/SBBiShe/scripts/train_refine.py", line 47, in main
+    defense.train_unet(trainset, testset, schedule)
+  File "/root/SBBiShe/core/defenses/REFINE.py", line 292, in train_unet
+    loss = loss_func(logit, f_label) + self.lmd * supconloss
+  File "/root/miniconda3/envs/gtsrb-refine/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1518, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/root/miniconda3/envs/gtsrb-refine/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1527, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/root/miniconda3/envs/gtsrb-refine/lib/python3.10/site-packages/torch/nn/modules/loss.py", line 618, in forward
+    return F.binary_cross_entropy(input, target, weight=self.weight, reduction=self.reduction)
+  File "/root/miniconda3/envs/gtsrb-refine/lib/python3.10/site-packages/torch/nn/functional.py", line 3122, in binary_cross_entropy
+    return torch._C._nn.binary_cross_entropy(input, target, weight, reduction_enum)
+RuntimeError: torch.nn.functional.binary_cross_entropy and torch.nn.BCELoss are unsafe to autocast.
+Many models use a sigmoid layer right before the binary cross entropy layer.
+In this case, combine the two layers using torch.nn.functional.binary_cross_entropy_with_logits
+or torch.nn.BCEWithLogitsLoss.  binary_cross_entropy_with_logits and BCEWithLogits are
+safe to autocast.
+(gtsrb-refine) root@autodl-container-83b647b69c-c6466ed5:~/SBBiShe# git pull
+remote: Enumerating objects: 9, done.
+remote: Counting objects: 100% (9/9), done.
+remote: Compressing objects: 100% (2/2), done.
+remote: Total 5 (delta 3), reused 5 (delta 3), pack-reused 0 (from 0)
+Unpacking objects: 100% (5/5), 566 bytes | 283.00 KiB/s, done.
+From https://github.com/cccrx1/SBBiShe
+   d981901..4de5d8c  main       -> origin/main
+Updating d981901..4de5d8c
+Fast-forward
+ core/defenses/REFINE.py | 8 ++++++--
+ 1 file changed, 6 insertions(+), 2 deletions(-)
+(gtsrb-refine) root@autodl-container-83b647b69c-c6466ed5:~/SBBiShe# python /root/SBBiShe/scripts/train_refine.py --dataset cub200 --attack badnets --data-root "$DATA_ROOT" --experiment-root "$EXP_ROOT" --attack-checkpoint "$BAD_ATK" --gpu-id "$GPU_ID" --seed "$SEED" --poisoned-rate "$PR" --batch-size "$BATCH_SIZE" --num-workers "$NUM_WORKERS" --epochs 30 --lr 0.001 --schedule 20 --schedule 25 --amp
+This machine has 1 cuda devices, and use 1 of them to train.
+==========Schedule parameters==========
+
+{'device': 'GPU', 'CUDA_VISIBLE_DEVICES': '0', 'GPU_num': 1, 'batch_size': 48, 'num_workers': 8, 'lr': 0.001, 'betas': (0.9, 0.999), 'eps': 1e-08, 'weight_decay': 0, 'amsgrad': False, 'schedule': [20, 25], 'gamma': 0.1, 'epochs': 30, 'log_iteration_interval': 100, 'test_epoch_interval': 10, 'save_epoch_interval': 10, 'save_dir': '/root/SBBiShe/experiments/refine/BadNets/train', 'experiment_name': 'cub200_refine_badnets_train_pr0p1', 'y_target': 1, 'poisoned_rate': 0.1, 'amp': True}
+
+poisoned_rate=0.1
+
+y_target=1
+
+Total train samples: 5994
+Total test samples: 5794
+Batch size: 48
+iteration every epoch: 124
+Initial learning rate: 0.001
+
+^CTraceback (most recent call last):
+  File "/root/SBBiShe/scripts/train_refine.py", line 51, in <module>
+    main()
+  File "/root/SBBiShe/scripts/train_refine.py", line 47, in main
+    defense.train_unet(trainset, testset, schedule)
+  File "/root/SBBiShe/core/defenses/REFINE.py", line 299, in train_unet
+    scaler.scale(loss).backward()
+  File "/root/miniconda3/envs/gtsrb-refine/lib/python3.10/site-packages/torch/_tensor.py", line 492, in backward
+    torch.autograd.backward(
+  File "/root/miniconda3/envs/gtsrb-refine/lib/python3.10/site-packages/torch/autograd/__init__.py", line 251, in backward
+    Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+KeyboardInterrupt
+
+(gtsrb-refine) root@autodl-container-83b647b69c-c6466ed5:~/SBBiShe# export BATCH_SIZE=64
+(gtsrb-refine) root@autodl-container-83b647b69c-c6466ed5:~/SBBiShe# python /root/SBBiShe/scripts/train_refine.py --dataset cub200 --attack badnets --data-root "$DATA_ROOT" --experiment-root "$EXP_ROOT" --attack-checkpoint "$BAD_ATK" --gpu-id "$GPU_ID" --seed "$SEED" --poisoned-rate "$PR" --batch-size "$BATCH_SIZE" --num-workers "$NUM_WORKERS" --epochs 30 --lr 0.001 --schedule 20 --schedule 25 --amp
+This machine has 1 cuda devices, and use 1 of them to train.
+==========Schedule parameters==========
+
+{'device': 'GPU', 'CUDA_VISIBLE_DEVICES': '0', 'GPU_num': 1, 'batch_size': 64, 'num_workers': 8, 'lr': 0.001, 'betas': (0.9, 0.999), 'eps': 1e-08, 'weight_decay': 0, 'amsgrad': False, 'schedule': [20, 25], 'gamma': 0.1, 'epochs': 30, 'log_iteration_interval': 100, 'test_epoch_interval': 10, 'save_epoch_interval': 10, 'save_dir': '/root/SBBiShe/experiments/refine/BadNets/train', 'experiment_name': 'cub200_refine_badnets_train_pr0p1', 'y_target': 1, 'poisoned_rate': 0.1, 'amp': True}
+
+poisoned_rate=0.1
+
+y_target=1
+
+Total train samples: 5994
+Total test samples: 5794
+Batch size: 64
+iteration every epoch: 93
+Initial learning rate: 0.001
+
+[2026-04-14_14:49:46] Epoch:2/30, iteration:6/93, lr: 0.001, loss: 0.16364635527133942, time: 65.82189440727234
+
+[2026-04-14_14:50:51] Epoch:3/30, iteration:12/93, lr: 0.001, loss: 0.1408175677061081, time: 64.81414079666138
+
+[2026-04-14_14:51:56] Epoch:4/30, iteration:18/93, lr: 0.001, loss: 0.14009158313274384, time: 64.80520486831665
+
+[2026-04-14_14:53:01] Epoch:5/30, iteration:24/93, lr: 0.001, loss: 0.14013299345970154, time: 64.87604999542236
+
+[2026-04-14_14:54:06] Epoch:6/30, iteration:30/93, lr: 0.001, loss: 0.1375824362039566, time: 64.8719470500946
+
+[2026-04-14_14:55:10] Epoch:7/30, iteration:36/93, lr: 0.001, loss: 0.12731195986270905, time: 64.90021467208862
+
+[2026-04-14_14:56:15] Epoch:8/30, iteration:42/93, lr: 0.001, loss: 0.13325345516204834, time: 64.82238221168518
+
+[2026-04-14_14:57:20] Epoch:9/30, iteration:48/93, lr: 0.001, loss: 0.1365078091621399, time: 64.81391143798828
+
+[2026-04-14_14:58:25] Epoch:10/30, iteration:54/93, lr: 0.001, loss: 0.12927211821079254, time: 64.89744925498962
+
+==========Test result on test dataset==========
+[2026-04-14_14:59:09] loss: 0.24917475879192352, time: 43.983970165252686
+
+[2026-04-14_14:59:48] Epoch:11/30, iteration:60/93, lr: 0.001, loss: 0.14314450323581696, time: 83.40458106994629
+
+[2026-04-14_15:00:53] Epoch:12/30, iteration:66/93, lr: 0.001, loss: 0.1478791981935501, time: 64.94321703910828
+
+[2026-04-14_15:01:58] Epoch:13/30, iteration:72/93, lr: 0.001, loss: 0.14297477900981903, time: 64.8853075504303
+
+[2026-04-14_15:03:03] Epoch:14/30, iteration:78/93, lr: 0.001, loss: 0.14364281296730042, time: 64.96538090705872
+
+[2026-04-14_15:04:08] Epoch:15/30, iteration:84/93, lr: 0.001, loss: 0.1359766721725464, time: 64.98645949363708
+
+[2026-04-14_15:05:13] Epoch:16/30, iteration:90/93, lr: 0.001, loss: 0.13558495044708252, time: 64.93246078491211
+
+[2026-04-14_15:06:19] Epoch:18/30, iteration:2/93, lr: 0.001, loss: 0.1421937346458435, time: 65.42298412322998
+
+[2026-04-14_15:07:23] Epoch:19/30, iteration:8/93, lr: 0.001, loss: 0.14930975437164307, time: 64.94105315208435
+
+[2026-04-14_15:08:28] Epoch:20/30, iteration:14/93, lr: 0.001, loss: 0.13147127628326416, time: 64.8141930103302
+
+==========Test result on test dataset==========
+[2026-04-14_15:09:38] loss: 0.2453368753194809, time: 69.89866805076599
+
+[2026-04-14_15:09:52] Epoch:21/30, iteration:20/93, lr: 0.0001, loss: 0.1317172646522522, time: 83.60938501358032
+
+[2026-04-14_15:10:57] Epoch:22/30, iteration:26/93, lr: 0.0001, loss: 0.14588069915771484, time: 64.90466737747192
+
+[2026-04-14_15:12:02] Epoch:23/30, iteration:32/93, lr: 0.0001, loss: 0.14397171139717102, time: 64.93238592147827
+
+[2026-04-14_15:13:07] Epoch:24/30, iteration:38/93, lr: 0.0001, loss: 0.1310560405254364, time: 64.86140632629395
+
+[2026-04-14_15:14:11] Epoch:25/30, iteration:44/93, lr: 0.0001, loss: 0.12591423094272614, time: 64.8835518360138
+
+[2026-04-14_15:15:16] Epoch:26/30, iteration:50/93, lr: 1e-05, loss: 0.1246429979801178, time: 64.9138753414154
+
+[2026-04-14_15:16:21] Epoch:27/30, iteration:56/93, lr: 1e-05, loss: 0.13852816820144653, time: 64.88580274581909
+
+[2026-04-14_15:17:26] Epoch:28/30, iteration:62/93, lr: 1e-05, loss: 0.1239214539527893, time: 64.93130087852478
+
+[2026-04-14_15:18:31] Epoch:29/30, iteration:68/93, lr: 1e-05, loss: 0.12052062153816223, time: 64.92143106460571
+
+[2026-04-14_15:19:36] Epoch:30/30, iteration:74/93, lr: 1e-05, loss: 0.1459711790084839, time: 64.95871758460999
+
+==========Test result on test dataset==========
+[2026-04-14_15:20:07] loss: 0.24269066751003265, time: 31.189089059829712
+
+(gtsrb-refine) root@autodl-container-83b647b69c-c6466ed5:~/SBBiShe# git pull
+remote: Enumerating objects: 13, done.
+remote: Counting objects: 100% (13/13), done.
+remote: Compressing objects: 100% (3/3), done.
+remote: Total 7 (delta 4), reused 7 (delta 4), pack-reused 0 (from 0)
+Unpacking objects: 100% (7/7), 2.44 KiB | 2.44 MiB/s, done.
+From https://github.com/cccrx1/SBBiShe
+   4de5d8c..19cc95c  main       -> origin/main
+Updating 4de5d8c..19cc95c
+Fast-forward
+ core/defenses/REFINE.py |   2 ++
+ scripts/train_refine.py | 117 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++-
+ 2 files changed, 118 insertions(+), 1 deletion(-)
+(gtsrb-refine) root@autodl-container-83b647b69c-c6466ed5:~/SBBiShe# BAD_REF=$(ls -t /root/SBBiShe/experiments/refine/BadNets/train/cub200_refine_badnets_train_pr0p1_*/ckpt_epoch_*.pth | head -1)
+BAD_ARR=$(dirname "$BAD_REF")/label_shuffle.pth
+
+python /root/SBBiShe/scripts/eval_refine.py --dataset cub200 --attack badnets --data-root /root/SBBiShe/datasets --experiment-root /root/SBBiShe/experiments --attack-checkpoint "$BAD_ATK" --refine-checkpoint "$BAD_REF" --arr-path "$BAD_ARR" --poisoned-rate 0.1 --gpu-id 0 --batch-size 64 --seed 666
+BA: 0.003624 (21/5794)
+ASR_NoTarget: 0.006072 (35/5764)
+(gtsrb-refine) root@autodl-container-83b647b69c-c6466ed5:~/SBBiShe# 

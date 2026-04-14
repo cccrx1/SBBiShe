@@ -50,6 +50,7 @@ class REFINE(Base):
                  num_classes=10,
                  lmd=0.1,
                  supcon_temperature=0.07,
+                 enable_label_shuffle=True,
                  seed=0,
                  deterministic=False):
         super(REFINE, self).__init__(seed=seed, deterministic=deterministic)
@@ -61,16 +62,22 @@ class REFINE(Base):
         self.num_classes = num_classes
         self.lmd = lmd
         self.supcon_temperature = supcon_temperature
+        self.enable_label_shuffle = bool(enable_label_shuffle)
         self.norm_mean = torch.tensor([0.485, 0.456, 0.406], dtype=torch.float32).view(1, 3, 1, 1)
         self.norm_std = torch.tensor([0.229, 0.224, 0.225], dtype=torch.float32).view(1, 3, 1, 1)
         if pretrain is not None:
             self.unet.load_state_dict(torch.load(pretrain), strict=False)
         if arr_path is not None:
             self.arr_shuffle = np.array(torch.load(arr_path), dtype=np.int64)
+            if not self.enable_label_shuffle:
+                self.arr_shuffle = np.arange(self.num_classes, dtype=np.int64)
         else:
             self.init_label_shuffle()
         
     def init_label_shuffle(self):
+        if not self.enable_label_shuffle:
+            self.arr_shuffle = np.arange(self.num_classes, dtype=np.int64)
+            return
         start = 0
         end = self.num_classes
         arr = np.array([i for i in range(self.num_classes)], dtype=np.int64)
@@ -83,6 +90,8 @@ class REFINE(Base):
         self.arr_shuffle = arr_shuffle
 
     def label_shuffle(self, label):
+        if not self.enable_label_shuffle:
+            return label
         label_new = torch.zeros_like(label)
         index = torch.from_numpy(self.arr_shuffle).to(device=label.device, dtype=torch.int64).repeat(label.shape[0], 1)
         label_new = label_new.scatter(1, index, label)
@@ -191,6 +200,8 @@ class REFINE(Base):
             self.unet.load_state_dict(torch.load(schedule['pretrain']), strict=False)
         if 'arr_path' in schedule:
             self.arr_shuffle = np.array(torch.load(schedule['arr_path']), dtype=np.int64)
+            if not self.enable_label_shuffle:
+                self.arr_shuffle = np.arange(self.num_classes, dtype=np.int64)
 
         # Use GPU
         if 'device' in schedule and schedule['device'] == 'GPU':

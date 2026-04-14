@@ -743,6 +743,7 @@ def load_model_checkpoint(model, checkpoint_path):
 def build_refine_defense(model, num_classes, checkpoint_path=None, arr_path=None, seed=GLOBAL_SEED):
     lmd = 0.05 if num_classes >= 100 else 0.1
     supcon_temperature = 0.2 if num_classes >= 100 else 0.07
+    enable_label_shuffle = num_classes < 100
     return core.REFINE(
         unet=core.models.UNetLittle(args=None, n_channels=3, n_classes=3, first_channels=64),
         model=model,
@@ -751,6 +752,7 @@ def build_refine_defense(model, num_classes, checkpoint_path=None, arr_path=None
         num_classes=num_classes,
         lmd=lmd,
         supcon_temperature=supcon_temperature,
+        enable_label_shuffle=enable_label_shuffle,
         seed=seed,
         deterministic=True,
     )
