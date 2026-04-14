@@ -177,7 +177,9 @@ class REFINE(Base):
                     )
                     supconloss = supconloss_func(features, f_index)
 
-                    loss = loss_func(logit, f_label) + self.lmd * supconloss
+                # BCELoss is not autocast-safe; compute BCE in FP32 outside autocast.
+                cls_loss = loss_func(logit.float(), f_label.float())
+                loss = cls_loss + self.lmd * supconloss.float()
 
                 losses.append(loss.cpu())
 
@@ -289,7 +291,9 @@ class REFINE(Base):
                     )
                     supconloss = supconloss_func(features, f_index)
 
-                    loss = loss_func(logit, f_label) + self.lmd * supconloss
+                # BCELoss is not autocast-safe; compute BCE in FP32 outside autocast.
+                cls_loss = loss_func(logit.float(), f_label.float())
+                loss = cls_loss + self.lmd * supconloss.float()
 
                 optimizer.zero_grad(set_to_none=True)
                 scaler.scale(loss).backward()
