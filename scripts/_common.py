@@ -159,6 +159,9 @@ def add_refine_training_args(parser):
     parser.add_argument("--betas", nargs=2, type=float, default=None, metavar=("BETA1", "BETA2"))
     parser.add_argument("--eps", type=float, default=None)
     parser.add_argument("--amsgrad", action="store_true")
+    parser.add_argument("--amp", dest="amp", action="store_true", help="Enable mixed-precision training for REFINE on GPU.")
+    parser.add_argument("--no-amp", dest="amp", action="store_false", help="Disable mixed-precision training for REFINE.")
+    parser.set_defaults(amp=True)
     return parser
 
 
@@ -706,6 +709,7 @@ def default_refine_schedule(args, attack_name, save_dir, dataset_name="gtsrb"):
         "experiment_name": experiment_name,
         "y_target": config["y_target"],
         "poisoned_rate": config["poisoned_rate"],
+        "amp": True,
     }
     schedule = dict(defaults)
     if args.lr is not None:
@@ -722,6 +726,8 @@ def default_refine_schedule(args, attack_name, save_dir, dataset_name="gtsrb"):
         schedule["eps"] = args.eps
     if args.amsgrad:
         schedule["amsgrad"] = True
+    if getattr(args, "amp", None) is not None:
+        schedule["amp"] = bool(args.amp)
     if args.pretrain is not None:
         schedule["pretrain"] = normalize_pretrain_spec(args.pretrain)
     schedule["schedule"] = resolve_schedule(defaults["schedule"], args)

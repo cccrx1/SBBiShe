@@ -107,6 +107,16 @@ class REFINE(Base):
         flip_mask = (torch.rand(image.size(0), 1, 1, 1, device=image.device) > 0.5)
         flipped = torch.flip(image, dims=[3])
         return torch.where(flip_mask, flipped, image)
+
+    def _autocast(self, enabled):
+        if hasattr(torch, 'amp') and hasattr(torch.amp, 'autocast'):
+            return torch.amp.autocast('cuda', enabled=enabled)
+        return torch.cuda.amp.autocast(enabled=enabled)
+
+    def _make_grad_scaler(self, enabled):
+        if hasattr(torch, 'amp') and hasattr(torch.amp, 'GradScaler'):
+            return torch.amp.GradScaler('cuda', enabled=enabled)
+        return torch.cuda.amp.GradScaler(enabled=enabled)
     
     def forward(self, image):
         self.X_adv, self.Y_adv = self._reprogram_and_classify(image)
@@ -118,7 +128,7 @@ class REFINE(Base):
         np.random.seed(worker_seed)
         random.seed(worker_seed)
 
-    def _test(self, dataset, device, batch_size=16, num_workers=8, loss_func=torch.nn.BCELoss(reduction='none'), supconloss_func=None):
+    def _test(self, dataset, device, batch_size=16, num_workers=8, loss_func=torch.nn.BCELoss(reduction='none'), supconloss_func=None, amp=False):
         with torch.no_grad():
             if supconloss_func is None:
                 supconloss_func = SupConLoss(
@@ -144,27 +154,28 @@ class REFINE(Base):
                 batch_img, _ = batch
                 batch_img = batch_img.to(device)
 
-                bsz = batch_img.shape[0]
-                # Get the pseudo-labels of images
-                f_logit = self.model(batch_img)
-                f_index = f_logit.argmax(1)
-                f_label = torch.zeros_like(f_logit).to(device).scatter_(1, f_index.view(-1, 1), 1)
+                with self._autocast(enabled=amp):
+                    bsz = batch_img.shape[0]
+                    # Get the pseudo-labels of images
+                    f_logit = self.model(batch_img)
+                    f_index = f_logit.argmax(1)
+                    f_label = torch.zeros_like(f_logit).to(device).scatter_(1, f_index.view(-1, 1), 1)
 
-                logit = self.forward(batch_img)
+                    logit = self.forward(batch_img)
 
-                # Use semantic logits from two views instead of pixel-level features.
-                batch_img_aug = self._augment_view(batch_img)
-                _, y_adv_aug = self._reprogram_and_classify(batch_img_aug)
-                features = torch.cat(
-                    [
-                        F.normalize(self.Y_adv, dim=1).unsqueeze(1),
-                        F.normalize(y_adv_aug, dim=1).unsqueeze(1),
-                    ],
-                    dim=1,
-                )
-                supconloss = supconloss_func(features, f_index)
+                    # Use semantic logits from two views instead of pixel-level features.
+                    batch_img_aug = self._augment_view(batch_img)
+                    _, y_adv_aug = self._reprogram_and_classify(batch_img_aug)
+                    features = torch.cat(
+                        [
+                            F.normalize(self.Y_adv, dim=1).unsqueeze(1),
+                            F.normalize(y_adv_aug, dim=1).unsqueeze(1),
+                        ],
+                        dim=1,
+                    )
+                    supconloss = supconloss_func(features, f_index)
 
-                loss = loss_func(logit, f_label) + self.lmd * supconloss
+                    loss = loss_func(logit, f_label) + self.lmd * supconloss
 
                 losses.append(loss.cpu())
 
@@ -218,6 +229,8 @@ class REFINE(Base):
             base_temperature=self.supcon_temperature,
         )
         optimizer = torch.optim.Adam(self.unet.parameters(), schedule['lr'], schedule['betas'], schedule['eps'], schedule['weight_decay'], schedule['amsgrad'])
+        use_amp = (device.type == 'cuda') and bool(schedule.get('amp', True))
+        scaler = self._make_grad_scaler(enabled=use_amp)
 
         work_dir = osp.join(schedule['save_dir'], schedule['experiment_name'] + '_' + time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime()))
         os.makedirs(work_dir, exist_ok=True)
@@ -251,33 +264,35 @@ class REFINE(Base):
                 batch_img, _ = batch
                 batch_img = batch_img.to(device)
 
-                bsz = batch_img.shape[0]
-                # Get the pseudo-labels of images
-                f_logit = self.model(batch_img)
-                f_index = f_logit.argmax(1)
-                # print('f_logit:', f_logit.shape)
-                # print('f_index:', f_index.shape)
-                f_label = torch.zeros_like(f_logit).to(device).scatter_(1, f_index.view(-1, 1), 1)
+                with self._autocast(enabled=use_amp):
+                    bsz = batch_img.shape[0]
+                    # Get the pseudo-labels of images
+                    f_logit = self.model(batch_img)
+                    f_index = f_logit.argmax(1)
+                    # print('f_logit:', f_logit.shape)
+                    # print('f_index:', f_index.shape)
+                    f_label = torch.zeros_like(f_logit).to(device).scatter_(1, f_index.view(-1, 1), 1)
 
-                logit = self.forward(batch_img)
+                    logit = self.forward(batch_img)
 
-                # Use semantic logits from two stochastic views for SupCon.
-                batch_img_aug = self._augment_view(batch_img)
-                _, y_adv_aug = self._reprogram_and_classify(batch_img_aug)
-                features = torch.cat(
-                    [
-                        F.normalize(self.Y_adv, dim=1).unsqueeze(1),
-                        F.normalize(y_adv_aug, dim=1).unsqueeze(1),
-                    ],
-                    dim=1,
-                )
-                supconloss = supconloss_func(features, f_index)
+                    # Use semantic logits from two stochastic views for SupCon.
+                    batch_img_aug = self._augment_view(batch_img)
+                    _, y_adv_aug = self._reprogram_and_classify(batch_img_aug)
+                    features = torch.cat(
+                        [
+                            F.normalize(self.Y_adv, dim=1).unsqueeze(1),
+                            F.normalize(y_adv_aug, dim=1).unsqueeze(1),
+                        ],
+                        dim=1,
+                    )
+                    supconloss = supconloss_func(features, f_index)
 
-                loss = loss_func(logit, f_label) + self.lmd * supconloss
+                    loss = loss_func(logit, f_label) + self.lmd * supconloss
 
-                optimizer.zero_grad()
-                loss.backward()
-                optimizer.step()
+                optimizer.zero_grad(set_to_none=True)
+                scaler.scale(loss).backward()
+                scaler.step(optimizer)
+                scaler.update()
 
                 iteration += 1
 
@@ -287,7 +302,13 @@ class REFINE(Base):
                     log(msg)
 
             if (i + 1) % schedule['test_epoch_interval'] == 0:
-                loss = self._test(test_dataset, device, schedule['batch_size'], schedule['num_workers'])
+                loss = self._test(
+                    test_dataset,
+                    device,
+                    schedule['batch_size'],
+                    schedule['num_workers'],
+                    amp=use_amp,
+                )
                 msg = "==========Test result on test dataset==========\n" + \
                       time.strftime("[%Y-%m-%d_%H:%M:%S] ", time.localtime()) + \
                       f"loss: {loss}, time: {time.time()-last_time}\n"
