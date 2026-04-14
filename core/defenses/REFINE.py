@@ -49,6 +49,7 @@ class REFINE(Base):
                  arr_path=None,
                  num_classes=10,
                  lmd=0.1,
+                 supcon_temperature=0.07,
                  seed=0,
                  deterministic=False):
         super(REFINE, self).__init__(seed=seed, deterministic=deterministic)
@@ -59,6 +60,11 @@ class REFINE(Base):
         self.model.eval()
         self.num_classes = num_classes
         self.lmd = lmd
+        self.supcon_temperature = supcon_temperature
+        mean = torch.tensor([0.485, 0.456, 0.406], dtype=torch.float32).view(1, 3, 1, 1)
+        std = torch.tensor([0.229, 0.224, 0.225], dtype=torch.float32).view(1, 3, 1, 1)
+        self.register_buffer("norm_mean", mean)
+        self.register_buffer("norm_std", std)
         if pretrain is not None:
             self.unet.load_state_dict(torch.load(pretrain), strict=False)
         if arr_path is not None:
@@ -83,11 +89,27 @@ class REFINE(Base):
         index = torch.from_numpy(self.arr_shuffle).to(device=label.device, dtype=torch.int64).repeat(label.shape[0], 1)
         label_new = label_new.scatter(1, index, label)
         return label_new
+
+    def _denormalize(self, image):
+        return image * self.norm_std + self.norm_mean
+
+    def _normalize(self, image):
+        return (image - self.norm_mean) / self.norm_std
+
+    def _reprogram_and_classify(self, image):
+        clean_image = self._denormalize(image)
+        x_adv = torch.clamp(self.unet(clean_image), 0, 1)
+        y_adv = self.model(self._normalize(x_adv))
+        return x_adv, y_adv
+
+    def _augment_view(self, image):
+        # Lightweight second view for supervised contrastive learning.
+        flip_mask = (torch.rand(image.size(0), 1, 1, 1, device=image.device) > 0.5)
+        flipped = torch.flip(image, dims=[3])
+        return torch.where(flip_mask, flipped, image)
     
     def forward(self, image):
-        self.X_adv = torch.clamp(self.unet(image), 0, 1)
-        # self.X_adv = F.normalize(self.X_adv)
-        self.Y_adv = self.model(self.X_adv)
+        self.X_adv, self.Y_adv = self._reprogram_and_classify(image)
         Y_adv = F.softmax(self.Y_adv, 1)
         return self.label_shuffle(Y_adv)
     
@@ -96,8 +118,13 @@ class REFINE(Base):
         np.random.seed(worker_seed)
         random.seed(worker_seed)
 
-    def _test(self, dataset, device, batch_size=16, num_workers=8, loss_func=torch.nn.BCELoss(reduction='none'), supconloss_func=SupConLoss()):
+    def _test(self, dataset, device, batch_size=16, num_workers=8, loss_func=torch.nn.BCELoss(reduction='none'), supconloss_func=None):
         with torch.no_grad():
+            if supconloss_func is None:
+                supconloss_func = SupConLoss(
+                    temperature=self.supcon_temperature,
+                    base_temperature=self.supcon_temperature,
+                )
             test_loader = DataLoader(
                 dataset,
                 batch_size=batch_size,
@@ -125,11 +152,16 @@ class REFINE(Base):
 
                 logit = self.forward(batch_img)
 
-                # Calculate the supervised constractive loss
-                features = self.X_adv.view(bsz, -1)
-                features = F.normalize(features, dim=1)
-                f1, f2 = features, features
-                features = torch.cat([f1.unsqueeze(1), f2.unsqueeze(1)], dim=1)
+                # Use semantic logits from two views instead of pixel-level features.
+                batch_img_aug = self._augment_view(batch_img)
+                _, y_adv_aug = self._reprogram_and_classify(batch_img_aug)
+                features = torch.cat(
+                    [
+                        F.normalize(self.Y_adv, dim=1).unsqueeze(1),
+                        F.normalize(y_adv_aug, dim=1).unsqueeze(1),
+                    ],
+                    dim=1,
+                )
                 supconloss = supconloss_func(features, f_index)
 
                 loss = loss_func(logit, f_label) + self.lmd * supconloss
@@ -143,7 +175,7 @@ class REFINE(Base):
         if 'pretrain' in schedule:
             self.unet.load_state_dict(torch.load(schedule['pretrain']), strict=False)
         if 'arr_path' in schedule:
-            self.arr_shuffle.load_state_dict(torch.load(schedule['arr_path']), strict=False)
+            self.arr_shuffle = np.array(torch.load(schedule['arr_path']), dtype=np.int64)
 
         # Use GPU
         if 'device' in schedule and schedule['device'] == 'GPU':
@@ -181,7 +213,10 @@ class REFINE(Base):
         self.model = self.model.to(device)
 
         loss_func = torch.nn.BCELoss(reduction='mean')
-        supconloss_func = SupConLoss()
+        supconloss_func = SupConLoss(
+            temperature=self.supcon_temperature,
+            base_temperature=self.supcon_temperature,
+        )
         optimizer = torch.optim.Adam(self.unet.parameters(), schedule['lr'], schedule['betas'], schedule['eps'], schedule['weight_decay'], schedule['amsgrad'])
 
         work_dir = osp.join(schedule['save_dir'], schedule['experiment_name'] + '_' + time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime()))
@@ -226,11 +261,16 @@ class REFINE(Base):
 
                 logit = self.forward(batch_img)
 
-                # Calculate the supervised constractive loss
-                features = self.X_adv.view(bsz, -1)
-                features = F.normalize(features, dim=1)
-                f1, f2 = features, features
-                features = torch.cat([f1.unsqueeze(1), f2.unsqueeze(1)], dim=1)
+                # Use semantic logits from two stochastic views for SupCon.
+                batch_img_aug = self._augment_view(batch_img)
+                _, y_adv_aug = self._reprogram_and_classify(batch_img_aug)
+                features = torch.cat(
+                    [
+                        F.normalize(self.Y_adv, dim=1).unsqueeze(1),
+                        F.normalize(y_adv_aug, dim=1).unsqueeze(1),
+                    ],
+                    dim=1,
+                )
                 supconloss = supconloss_func(features, f_index)
 
                 loss = loss_func(logit, f_label) + self.lmd * supconloss

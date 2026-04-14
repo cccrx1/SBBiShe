@@ -680,16 +680,18 @@ def default_attack_schedule(args, benign_training, attack_name, save_dir, experi
 
 def default_refine_schedule(args, attack_name, save_dir, dataset_name="gtsrb"):
     attack_name = attack_name.lower()
+    dataset_name = str(dataset_name).strip().lower()
     config = attack_config(attack_name, args=args)
     prefix = dataset_experiment_prefix(dataset_name)
     experiment_name = f"{prefix}_refine_{attack_name}_train_{poisoned_rate_tag(config['poisoned_rate'])}"
+    default_lr = 0.001 if dataset_name == "cub200" else 0.01
     defaults = {
         "device": args.device,
         "CUDA_VISIBLE_DEVICES": args.gpu_id,
         "GPU_num": 1,
         "batch_size": args.batch_size,
         "num_workers": args.num_workers,
-        "lr": 0.01,
+        "lr": default_lr,
         "betas": (0.9, 0.999),
         "eps": 1e-08,
         "weight_decay": 0,
@@ -733,12 +735,16 @@ def load_model_checkpoint(model, checkpoint_path):
 
 
 def build_refine_defense(model, num_classes, checkpoint_path=None, arr_path=None, seed=GLOBAL_SEED):
+    lmd = 0.05 if num_classes >= 100 else 0.1
+    supcon_temperature = 0.2 if num_classes >= 100 else 0.07
     return core.REFINE(
         unet=core.models.UNetLittle(args=None, n_channels=3, n_classes=3, first_channels=64),
         model=model,
         pretrain=str(checkpoint_path) if checkpoint_path else None,
         arr_path=str(arr_path) if arr_path else None,
         num_classes=num_classes,
+        lmd=lmd,
+        supcon_temperature=supcon_temperature,
         seed=seed,
         deterministic=True,
     )
