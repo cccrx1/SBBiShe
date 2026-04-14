@@ -795,7 +795,16 @@ def infer_refine_artifacts(experiment_root, attack_name, poisoned_rate=None, dat
     return checkpoints[-1], arr_path, exp_dir
 
 
-def manual_refine_eval(defense, dataset, device, batch_size, y_target=None, ignore_target=False, label_dataset=None):
+def manual_refine_eval(
+    defense,
+    dataset,
+    device,
+    batch_size,
+    y_target=None,
+    ignore_target=False,
+    label_dataset=None,
+    raw_output=False,
+):
     loader = torch.utils.data.DataLoader(
         dataset,
         batch_size=batch_size,
@@ -828,7 +837,11 @@ def manual_refine_eval(defense, dataset, device, batch_size, y_target=None, igno
 
     for batch_img, batch_label, batch_clean_label in iterator:
         batch_img = batch_img.to(device)
-        logits = defense.forward(batch_img).cpu()
+        if raw_output:
+            _, logits = defense._reprogram_and_classify(batch_img)
+            logits = logits.cpu()
+        else:
+            logits = defense.forward(batch_img).cpu()
         preds = logits.argmax(dim=1)
         mask = torch.ones_like(batch_clean_label, dtype=torch.bool)
         if ignore_target and y_target is not None:

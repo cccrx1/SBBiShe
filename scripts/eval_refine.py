@@ -39,6 +39,12 @@ def write_eval_log(
     total_ba,
     correct_asr,
     total_asr,
+    raw_ba_metric=None,
+    raw_asr_metric=None,
+    raw_correct_ba=None,
+    raw_total_ba=None,
+    raw_correct_asr=None,
+    raw_total_asr=None,
 ):
     log_dir.mkdir(parents=True, exist_ok=True)
     log_path = log_dir / "results.txt"
@@ -52,6 +58,13 @@ def write_eval_log(
         f"BA={ba_metric:.6f} ({correct_ba}/{total_ba})",
         f"ASR_NoTarget={asr_metric:.6f} ({correct_asr}/{total_asr})",
     ]
+    if raw_ba_metric is not None:
+        lines.extend(
+            [
+                f"RAW_BA={raw_ba_metric:.6f} ({raw_correct_ba}/{raw_total_ba})",
+                f"RAW_ASR_NoTarget={raw_asr_metric:.6f} ({raw_correct_asr}/{raw_total_asr})",
+            ]
+        )
     log_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
@@ -68,6 +81,19 @@ def main(cli_args=None):
     parser.add_argument("--attack-checkpoint", default=None)
     parser.add_argument("--refine-checkpoint", default=None)
     parser.add_argument("--arr-path", default=None)
+    parser.add_argument(
+        "--raw-eval",
+        dest="raw_eval",
+        action="store_true",
+        help="Additionally evaluate raw UNet+model outputs without label shuffle for diagnosis.",
+    )
+    parser.add_argument(
+        "--no-raw-eval",
+        dest="raw_eval",
+        action="store_false",
+        help="Disable raw output diagnostic evaluation.",
+    )
+    parser.set_defaults(raw_eval=True)
     add_common_attack_args(parser, include_reflection=True)
     args = parser.parse_args(cli_args)
 
@@ -136,6 +162,36 @@ def main(cli_args=None):
     print(f"BA: {ba_metric:.6f} ({correct_ba}/{total_ba})")
     print(f"ASR_NoTarget: {asr_metric:.6f} ({correct_asr}/{total_asr})")
 
+    raw_metrics = None
+    if args.raw_eval:
+        raw_correct_ba, raw_total_ba, raw_ba_metric = manual_refine_eval(
+            defense,
+            testset,
+            device,
+            args.batch_size,
+            raw_output=True,
+        )
+        raw_correct_asr, raw_total_asr, raw_asr_metric = manual_refine_eval(
+            defense,
+            poisoned_testset,
+            device,
+            args.batch_size,
+            y_target=y_target,
+            ignore_target=True,
+            label_dataset=testset,
+            raw_output=True,
+        )
+        raw_metrics = {
+            "raw_ba_metric": raw_ba_metric,
+            "raw_asr_metric": raw_asr_metric,
+            "raw_correct_ba": raw_correct_ba,
+            "raw_total_ba": raw_total_ba,
+            "raw_correct_asr": raw_correct_asr,
+            "raw_total_asr": raw_total_asr,
+        }
+        print(f"RAW_BA: {raw_ba_metric:.6f} ({raw_correct_ba}/{raw_total_ba})")
+        print(f"RAW_ASR_NoTarget: {raw_asr_metric:.6f} ({raw_correct_asr}/{raw_total_asr})")
+
     dataset_prefix = dataset_experiment_prefix(args.dataset)
     eval_root = refine_output_root(args.experiment_root, attack_name, "eval", dataset_name=args.dataset)
     write_eval_log(
@@ -152,6 +208,7 @@ def main(cli_args=None):
         total_ba,
         correct_asr,
         total_asr,
+        **(raw_metrics or {}),
     )
 
 
