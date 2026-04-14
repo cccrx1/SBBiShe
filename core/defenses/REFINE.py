@@ -61,10 +61,8 @@ class REFINE(Base):
         self.num_classes = num_classes
         self.lmd = lmd
         self.supcon_temperature = supcon_temperature
-        mean = torch.tensor([0.485, 0.456, 0.406], dtype=torch.float32).view(1, 3, 1, 1)
-        std = torch.tensor([0.229, 0.224, 0.225], dtype=torch.float32).view(1, 3, 1, 1)
-        self.register_buffer("norm_mean", mean)
-        self.register_buffer("norm_std", std)
+        self.norm_mean = torch.tensor([0.485, 0.456, 0.406], dtype=torch.float32).view(1, 3, 1, 1)
+        self.norm_std = torch.tensor([0.229, 0.224, 0.225], dtype=torch.float32).view(1, 3, 1, 1)
         if pretrain is not None:
             self.unet.load_state_dict(torch.load(pretrain), strict=False)
         if arr_path is not None:
@@ -91,10 +89,14 @@ class REFINE(Base):
         return label_new
 
     def _denormalize(self, image):
-        return image * self.norm_std + self.norm_mean
+        norm_std = self.norm_std.to(image.device)
+        norm_mean = self.norm_mean.to(image.device)
+        return image * norm_std + norm_mean
 
     def _normalize(self, image):
-        return (image - self.norm_mean) / self.norm_std
+        norm_std = self.norm_std.to(image.device)
+        norm_mean = self.norm_mean.to(image.device)
+        return (image - norm_mean) / norm_std
 
     def _reprogram_and_classify(self, image):
         clean_image = self._denormalize(image)
